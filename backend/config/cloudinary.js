@@ -1,6 +1,14 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Ensure env vars are loaded even if this module is imported before server.js calls dotenv.config()
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '..', '.env') });
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -23,10 +31,20 @@ const certificationStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
     const isPdf = file.mimetype === 'application/pdf';
+    const original = (file.originalname || 'certificate').replace(/\.[^/.]+$/, '');
+    const safeBase = original
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60);
     return {
       folder: 'skillbridge/certifications',
       resource_type: isPdf ? 'raw' : 'auto',
       allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx'],
+      // Avoid random public ids like "za9r6oiooxcqipl53ggm"
+      // Keep it unique with a timestamp but readable.
+      public_id: `${Date.now()}-${safeBase || 'certificate'}`,
     };
   },
 });

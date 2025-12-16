@@ -251,7 +251,25 @@ router.delete('/me/skills/learning/:skillName', authenticateToken, async (req, r
 });
 
 // Add certification with file upload
-router.post('/me/certifications', authenticateToken, uploadCertification.single('file'), async (req, res) => {
+// NOTE: multer/cloudinary errors happen *before* the async handler, so we wrap the upload
+const uploadCertificationMiddleware = (req, res, next) => {
+  uploadCertification.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Certification upload error:', err);
+      // Multer errors (file size, invalid file, etc.)
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File size too large. Maximum size is 10MB.' });
+      }
+      return res.status(500).json({
+        message: err.message || 'Certification file upload failed',
+        error: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+      });
+    }
+    next();
+  });
+};
+
+router.post('/me/certifications', authenticateToken, uploadCertificationMiddleware, async (req, res) => {
   try {
     const { name, issuer, year } = req.body;
     if (!name) {
@@ -264,11 +282,16 @@ router.post('/me/certifications', authenticateToken, uploadCertification.single(
     }
 
     const certification = {
-      name,
-      issuer: issuer || '',
+      name: name.trim(),
+      issuer: issuer ? issuer.trim() : '',
       year: year || '',
-      fileUrl: req.file ? req.file.path : '',
-      filePublicId: req.file ? req.file.filename : '',
+      // CloudinaryStorage puts the URL in req.file.path
+      fileUrl: req.file ? (req.file.path || '') : '',
+      // Cloudinary public id comes back as req.file.filename from multer-storage-cloudinary
+      filePublicId: req.file ? (req.file.filename || '') : '',
+      // Preserve original name + mimetype for proper downloads and rendering
+      fileName: req.file?.originalname || '',
+      fileMimeType: req.file?.mimetype || '',
     };
 
     user.certifications.push(certification);
@@ -280,7 +303,77 @@ router.post('/me/certifications', authenticateToken, uploadCertification.single(
       certifications: user.certifications,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error adding certification:', error);
+    res.status(500).json({
+      message: error.message || 'Failed to add certification',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+  }
+});
+
+// Download a certification file with correct filename/extension
+router.get('/me/certifications/:certId/download', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const certification = user.certifications.find(
+      (cert) => cert._id.toString() === req.params.certId
+    );
+
+    if (!certification || !certification.fileUrl) {
+      return res.status(404).json({ message: 'Certification file not found' });
+    }
+
+    const upstream = await fetch(certification.fileUrl);
+    if (!upstream.ok) {
+      return res.status(502).json({ message: 'Failed to fetch file from storage provider' });
+    }
+
+    const contentType =
+      upstream.headers.get('content-type') || certification.fileMimeType || 'application/octet-stream';
+
+    // Prefer original filename, else derive from cert name
+    let filename = certification.fileName?.trim() || `${certification.name || 'certificate'}`;
+
+    // If filename looks like a Cloudinary public_id (common when original name wasn't stored), fall back to cert name
+    const publicId = certification.filePublicId?.trim();
+    if (publicId && filename === publicId) {
+      filename = `${certification.name || 'certificate'}`;
+    }
+    // Add extension if missing (prefer stored mimetype, fallback to upstream Content-Type)
+    const mimeForExt = certification.fileMimeType || contentType;
+    if (!filename.includes('.') && mimeForExt) {
+      const map = {
+        'application/pdf': 'pdf',
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+        'application/msword': 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      };
+      const ext = map[mimeForExt];
+      if (ext) filename = `${filename}.${ext}`;
+    }
+
+    const disposition = req.query.disposition === 'inline' ? 'inline' : 'attachment';
+
+    res.setHeader('Content-Type', contentType);
+    // filename*= supports UTF-8; keep simple filename too for compatibility
+    const safeName = filename.replace(/"/g, '');
+    res.setHeader(
+      'Content-Disposition',
+      `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
+    );
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch (error) {
+    console.error('Error downloading certification:', error);
+    res.status(500).json({ message: error.message || 'Failed to download certification' });
   }
 });
 

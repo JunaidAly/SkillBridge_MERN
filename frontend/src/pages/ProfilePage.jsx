@@ -5,6 +5,8 @@ import Button from "../ui/Button";
 import EditProfileModal from "../components/Modal/EditProfileModal";
 import AddSkillModal from "../components/Modal/AddSkillModal";
 import AddCertificationModal from "../components/Modal/AddCertificationModal";
+import apiClient from "../api/client";
+import { downloadBlob } from "../utils/downloadBlob";
 import {
   fetchProfile,
   removeTeachingSkill,
@@ -35,6 +37,38 @@ function ProfilePage() {
 
   const handleRemoveCertification = (certId) => {
     dispatch(removeCertification(certId));
+  };
+
+  const handleDownloadCertification = async (cert) => {
+    try {
+      const res = await apiClient.get(`/users/me/certifications/${cert._id}/download`, {
+        responseType: "blob",
+      });
+      // Prefer backend-provided Content-Disposition filename (most reliable)
+      const cd = res.headers?.["content-disposition"] || "";
+      const matchStar = cd.match(/filename\*\=UTF-8''([^;]+)/i);
+      const match = cd.match(/filename=\"?([^\";]+)\"?/i);
+      let filename = matchStar ? decodeURIComponent(matchStar[1]) : match ? match[1] : "";
+      if (!filename) filename = cert.fileName || `${cert.name || "certificate"}`;
+      // If backend didn't provide extension in fileName, try to infer from mime
+      if (!filename.includes(".") && cert.fileMimeType) {
+        const map = {
+          "application/pdf": "pdf",
+          "image/jpeg": "jpg",
+          "image/png": "png",
+          "image/webp": "webp",
+          "image/gif": "gif",
+          "application/msword": "doc",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        };
+        const ext = map[cert.fileMimeType];
+        if (ext) filename = `${filename}.${ext}`;
+      }
+      downloadBlob(res.data, filename);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to download certificate");
+    }
   };
 
   if (loading) {
@@ -82,7 +116,7 @@ function ProfilePage() {
             </div>
             <button
               onClick={() => setIsEditModalOpen(true)}
-              className="absolute bottom-10 right-0 w-8 h-8 bg-teal rounded-full flex items-center justify-center hover:bg-teal/90 transition-colors"
+              className="absolute bottom-18 right-0 w-8 h-8 bg-teal rounded-full flex items-center justify-center hover:bg-teal/90 transition-colors"
             >
               <Pencil className="text-white" size={14} />
             </button>
@@ -299,15 +333,15 @@ function ProfilePage() {
                     {cert.issuer} {cert.year && `(${cert.year})`}
                   </p>
                   {cert.fileUrl && (
-                    <a
-                      href={cert.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-teal text-xs mt-1 hover:underline"
-                    >
-                      <FileText size={12} />
-                      View Certificate
-                    </a>
+                    <div className="flex items-center gap-3 mt-1">
+                      <button
+                        onClick={() => handleDownloadCertification(cert)}
+                        className="flex items-center gap-1 text-teal text-xs hover:underline"
+                      >
+                        <FileText size={12} />
+                        Download
+                      </button>
+                    </div>
                   )}
                 </div>
                 <button

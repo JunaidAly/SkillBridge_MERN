@@ -38,6 +38,12 @@ const certificationSchema = new mongoose.Schema({
   filePublicId: {
     type: String,
   },
+  fileName: {
+    type: String,
+  },
+  fileMimeType: {
+    type: String,
+  },
 });
 
 const userSchema = new mongoose.Schema(
