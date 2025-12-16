@@ -6,6 +6,7 @@ function GoogleLoginButtonInner({ className, children }) {
   const dispatch = useDispatch();
 
   const handleGoogleLogin = useGoogleLogin({
+    flow: 'implicit',
     onSuccess: async (tokenResponse) => {
       try {
         // Get user info from Google
@@ -13,7 +14,7 @@ function GoogleLoginButtonInner({ className, children }) {
           `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokenResponse.access_token}`
         );
         const userData = await userInfoResponse.json();
-        
+
         dispatch(loginWithGoogle({
           credential: tokenResponse.access_token,
           email: userData.email,

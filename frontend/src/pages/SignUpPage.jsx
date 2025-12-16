@@ -34,71 +34,124 @@ function SignUpPage() {
   };
 
 
-  const handleFacebookLogin = () => {
-    if (!window.FB) {
-      console.error('Facebook SDK not loaded');
+  const [fbReady, setFbReady] = useState(false);
+
+  useEffect(() => {
+    const facebookAppId = import.meta.env.VITE_FACEBOOK_APP_ID?.trim() || '';
+    
+    if (!facebookAppId) {
+      console.warn('VITE_FACEBOOK_APP_ID is not set. Facebook login will not work.');
       return;
     }
 
-    window.FB.login(
-      (response) => {
-        if (response.authResponse) {
-          window.FB.api(
-            '/me',
-            { fields: 'name,email' },
-            (userInfo) => {
-              if (userInfo.error) {
-                console.error('Facebook API error:', userInfo.error);
-                return;
-              }
-              dispatch(loginWithFacebook({
-                accessToken: response.authResponse.accessToken,
-                userID: response.authResponse.userID,
-                email: userInfo.email || `${response.authResponse.userID}@facebook.com`,
-                name: userInfo.name,
-              }));
-            }
-          );
-        } else {
-          console.error('Facebook login failed');
-        }
-      },
-      { scope: 'email' }
-    );
-  };
+    // Check if we're on HTTPS or localhost (required for Facebook)
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure) {
+      console.warn('Facebook login requires HTTPS. For local development, use localhost or HTTPS.');
+    }
 
-  useEffect(() => {
-    // Initialize Facebook SDK when it loads
     const initFacebook = () => {
       if (window.FB) {
-        window.FB.init({
-          appId: import.meta.env.VITE_FACEBOOK_APP_ID || '',
-          cookie: true,
-          xfbml: true,
-          version: 'v18.0',
-        });
-      } else {
-        // Retry after a short delay if SDK not loaded yet
-        setTimeout(initFacebook, 100);
+        try {
+          window.FB.init({
+            appId: facebookAppId,
+            cookie: true,
+            xfbml: true,
+            version: 'v18.0',
+          });
+          setFbReady(true);
+        } catch (error) {
+          console.error('Facebook SDK initialization error:', error);
+        }
       }
     };
 
-    // Check if SDK is already loaded
-    if (document.getElementById('facebook-jssdk')) {
+    // If SDK is already loaded
+    if (window.FB) {
+      initFacebook();
+    } else if (window.fbSDKReady) {
+      // SDK loaded but not initialized
       initFacebook();
     } else {
-      // Wait for SDK to load
+      // Wait for SDK to load via callback
+      window.fbInitCallback = initFacebook;
+      
+      // Also check periodically as fallback
       const checkInterval = setInterval(() => {
-        if (window.FB) {
+        if (window.FB && !fbReady) {
           initFacebook();
           clearInterval(checkInterval);
         }
       }, 100);
 
-      // Cleanup after 5 seconds
-      setTimeout(() => clearInterval(checkInterval), 5000);
+      // Cleanup after 10 seconds
+      setTimeout(() => clearInterval(checkInterval), 10000);
     }
+
+    return () => {
+      if (window.fbInitCallback === initFacebook) {
+        delete window.fbInitCallback;
+      }
+    };
   }, []);
+
+  const handleFacebookLogin = () => {
+    const facebookAppId = import.meta.env.VITE_FACEBOOK_APP_ID?.trim() || '';
+    
+    if (!facebookAppId) {
+      alert('Facebook OAuth is not configured. Please set VITE_FACEBOOK_APP_ID in your .env file.');
+      return;
+    }
+
+    // Check if we're on HTTPS or localhost
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure) {
+      alert('Facebook login requires HTTPS. Please use HTTPS or localhost for development.');
+      return;
+    }
+
+    if (!window.FB || !fbReady) {
+      alert('Facebook SDK is not ready. Please wait a moment and try again.');
+      return;
+    }
+
+    try {
+      window.FB.login(
+        (response) => {
+          if (response.authResponse) {
+            window.FB.api(
+              '/me',
+              { fields: 'name,email' },
+              (userInfo) => {
+                if (userInfo.error) {
+                  console.error('Facebook API error:', userInfo.error);
+                  alert('Failed to get user information from Facebook.');
+                  return;
+                }
+                dispatch(loginWithFacebook({
+                  accessToken: response.authResponse.accessToken,
+                  userID: response.authResponse.userID,
+                  email: userInfo.email || `${response.authResponse.userID}@facebook.com`,
+                  name: userInfo.name,
+                }));
+              }
+            );
+          } else {
+            console.error('Facebook login failed:', response);
+            if (response.error) {
+              alert(`Facebook login failed: ${response.error.message || 'Unknown error'}`);
+            }
+          }
+        },
+        { scope: 'email' }
+      );
+    } catch (error) {
+      console.error('Facebook login error:', error);
+      alert('An error occurred during Facebook login. Please try again.');
+    }
+  };
 
   return (
     <div className="min-h-screen flex">
