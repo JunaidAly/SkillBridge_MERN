@@ -42,6 +42,43 @@ export const loginUser = createAsyncThunk(
   }
 );
 
+export const loginWithGoogle = createAsyncThunk(
+  'auth/google',
+  async (googleData, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post('/auth/google', {
+        tokenId: googleData.credential,
+        email: googleData.email,
+        name: googleData.name,
+        googleId: googleData.sub,
+      });
+      return res.data;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Google login failed';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+export const loginWithFacebook = createAsyncThunk(
+  'auth/facebook',
+  async (facebookData, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post('/auth/facebook', {
+        accessToken: facebookData.accessToken,
+        email: facebookData.email,
+        name: facebookData.name,
+        facebookId: facebookData.userID,
+        userID: facebookData.userID,
+      });
+      return res.data;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Facebook login failed';
+      return rejectWithValue(message);
+    }
+  }
+);
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -91,6 +128,40 @@ const authSlice = createSlice({
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || 'Login failed';
+      })
+      .addCase(loginWithGoogle.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(loginWithGoogle.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.token = action.payload.token;
+        localStorage.setItem(
+          'auth',
+          JSON.stringify({ user: action.payload.user, token: action.payload.token })
+        );
+      })
+      .addCase(loginWithGoogle.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Google login failed';
+      })
+      .addCase(loginWithFacebook.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(loginWithFacebook.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.token = action.payload.token;
+        localStorage.setItem(
+          'auth',
+          JSON.stringify({ user: action.payload.user, token: action.payload.token })
+        );
+      })
+      .addCase(loginWithFacebook.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Facebook login failed';
       });
   },
 });

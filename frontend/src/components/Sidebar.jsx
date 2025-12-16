@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useDispatch } from "react-redux";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X } from "lucide-react";
+import { logout } from "../store/authSlice";
 
 const navItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
@@ -12,10 +14,18 @@ const navItems = [
 
 function Sidebar() {
   const location = useLocation();
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const closeSidebar = () => setIsOpen(false);
+
+  const handleLogout = () => {
+    dispatch(logout());
+    navigate("/login", { replace: true });
+    closeSidebar();
+  };
 
   return (
     <>
@@ -92,10 +102,7 @@ function Sidebar() {
         {/* Logout Button */}
         <div className="p-4 mt-auto">
           <button
-            onClick={() => {
-              closeSidebar();
-              window.location.href = "/login";
-            }}
+            onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-3 w-full rounded-lg font-family-poppins text-sm text-gray hover:bg-red-50 hover:text-red-600 transition-all"
           >
             <LogOut size={20} />

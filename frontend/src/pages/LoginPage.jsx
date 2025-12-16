@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Input from "../ui/Input";
 import Button from "../ui/AuthButton";
-import { loginUser, clearError } from "../store/authSlice";
+import GoogleLoginButton from "../components/GoogleLoginButton";
+import { loginUser, loginWithFacebook, clearError } from "../store/authSlice";
 
 function LoginPage() {
   const dispatch = useDispatch();
@@ -29,6 +30,73 @@ function LoginPage() {
     e.preventDefault();
     dispatch(loginUser(formData));
   };
+
+
+  const handleFacebookLogin = () => {
+    if (!window.FB) {
+      console.error('Facebook SDK not loaded');
+      return;
+    }
+
+    window.FB.login(
+      (response) => {
+        if (response.authResponse) {
+          window.FB.api(
+            '/me',
+            { fields: 'name,email' },
+            (userInfo) => {
+              if (userInfo.error) {
+                console.error('Facebook API error:', userInfo.error);
+                return;
+              }
+              dispatch(loginWithFacebook({
+                accessToken: response.authResponse.accessToken,
+                userID: response.authResponse.userID,
+                email: userInfo.email || `${response.authResponse.userID}@facebook.com`,
+                name: userInfo.name,
+              }));
+            }
+          );
+        } else {
+          console.error('Facebook login failed');
+        }
+      },
+      { scope: 'email' }
+    );
+  };
+
+  useEffect(() => {
+    // Initialize Facebook SDK when it loads
+    const initFacebook = () => {
+      if (window.FB) {
+        window.FB.init({
+          appId: import.meta.env.VITE_FACEBOOK_APP_ID || '',
+          cookie: true,
+          xfbml: true,
+          version: 'v18.0',
+        });
+      } else {
+        // Retry after a short delay if SDK not loaded yet
+        setTimeout(initFacebook, 100);
+      }
+    };
+
+    // Check if SDK is already loaded
+    if (document.getElementById('facebook-jssdk')) {
+      initFacebook();
+    } else {
+      // Wait for SDK to load
+      const checkInterval = setInterval(() => {
+        if (window.FB) {
+          initFacebook();
+          clearInterval(checkInterval);
+        }
+      }, 100);
+
+      // Cleanup after 5 seconds
+      setTimeout(() => clearInterval(checkInterval), 5000);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen flex">
@@ -89,7 +157,7 @@ function LoginPage() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <button className="flex items-center justify-center gap-3 w-full py-3 border border-[#D0D0D0] rounded-lg hover:bg-gray-50 transition-all">
+            <GoogleLoginButton className="flex items-center justify-center gap-3 w-full py-3 border border-[#D0D0D0] rounded-lg hover:bg-gray-50 transition-all">
               <svg width="20" height="20" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
@@ -111,9 +179,12 @@ function LoginPage() {
               <span className="font-family-poppins font-medium text-dark-blue">
                 Continue with Google
               </span>
-            </button>
+            </GoogleLoginButton>
 
-            <button className="flex items-center justify-center gap-3 w-full py-3 border border-[#D0D0D0] rounded-lg hover:bg-gray-50 transition-all">
+            <button
+              onClick={handleFacebookLogin}
+              className="flex items-center justify-center gap-3 w-full py-3 border border-[#D0D0D0] rounded-lg hover:bg-gray-50 transition-all"
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>
