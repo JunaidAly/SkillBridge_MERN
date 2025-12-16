@@ -1,84 +1,82 @@
-import { useState } from "react";
-import { Star } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { Star, Loader2 } from "lucide-react";
 import Button from "../ui/Button";
-
-const feedbackReceived = [
-  {
-    id: 1,
-    name: "Alex Johnson",
-    type: "Rated you",
-    rating: 5,
-    date: "2024-10-22",
-    comment:
-      "Jane is an outstanding teacher! Her explanations were incredibly clear, and she made complex topics easy to understand. Highly recommended!",
-    skill: "Introduction to Data Science",
-    avatar: null,
-  },
-  {
-    id: 2,
-    name: "Chris Miller",
-    type: "Rated you",
-    rating: 5,
-    date: "2024-11-15",
-    comment:
-      "Jane is an outstanding teacher! Her explanations were incredibly clear, and she made complex topics easy to understand. Highly recommended!",
-    skill: "Digital Marketing Strategies",
-    avatar: null,
-  },
-  {
-    id: 3,
-    name: "Jessica Brown",
-    type: "Rated you",
-    rating: 4,
-    date: "2024-10-12",
-    comment:
-      "Jane clarified all my doubts and provided excellent examples. The session was very engaging and I learned a lot.",
-    skill: "Advanced Excel Techniques",
-    avatar: null,
-  },
-];
-
-const feedbackGiven = [
-  {
-    id: 1,
-    name: "Michael Chen",
-    type: "You rated",
-    rating: 5,
-    date: "2024-10-20",
-    comment:
-      "Michael was an excellent mentor. His approach to teaching React was very practical and hands-on.",
-    skill: "Advanced React Development",
-    avatar: null,
-  },
-  {
-    id: 2,
-    name: "Sarah Wilson",
-    type: "You rated",
-    rating: 4,
-    date: "2024-09-28",
-    comment:
-      "Great session on Python basics. Sarah explained concepts clearly and patiently.",
-    skill: "Python Programming",
-    avatar: null,
-  },
-];
+import {
+  fetchFeedbackReceived,
+  fetchFeedbackGiven,
+  fetchPendingSessions,
+  submitFeedback,
+  clearFeedbackError,
+} from "../store/feedbackSlice";
 
 function FeedbackPage() {
-  const [rating, setRating] = useState(1);
-  const [hoveredRating, setHoveredRating] = useState(0);
-  const [feedback, setFeedback] = useState("");
-  const [activeTab, setActiveTab] = useState("received");
+  const dispatch = useDispatch();
+  const { feedbackReceived, feedbackGiven, pendingSessions, loading, submitting, error } =
+    useSelector((state) => state.feedback);
 
-  const session = {
-    person: "Michael Chen",
-    skill: "Advanced React Development",
-    date: "2025-10-26",
-    avatar: null,
+  const [rating, setRating] = useState(5);
+  const [hoveredRating, setHoveredRating] = useState(0);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [activeTab, setActiveTab] = useState("received");
+  const [selectedSession, setSelectedSession] = useState(null);
+
+  useEffect(() => {
+    dispatch(fetchFeedbackReceived());
+    dispatch(fetchFeedbackGiven());
+    dispatch(fetchPendingSessions());
+  }, [dispatch]);
+
+  // Auto-select first pending session if available
+  useEffect(() => {
+    if (pendingSessions.length > 0 && !selectedSession) {
+      setSelectedSession(pendingSessions[0]);
+    }
+  }, [pendingSessions, selectedSession]);
+
+  const handleSubmit = async () => {
+    if (!selectedSession) {
+      alert("Please select a session to provide feedback for");
+      return;
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      alert("Please select a rating");
+      return;
+    }
+
+    try {
+      await dispatch(
+        submitFeedback({
+          toUserId: selectedSession.otherUserId,
+          meetingId: selectedSession.meetingId,
+          skill: selectedSession.skill,
+          rating,
+          comment: feedbackText,
+        })
+      ).unwrap();
+
+      // Reset form
+      setRating(5);
+      setFeedbackText("");
+      setSelectedSession(null);
+      
+      // Refresh feedback lists
+      dispatch(fetchFeedbackReceived());
+      dispatch(fetchFeedbackGiven());
+      dispatch(fetchPendingSessions());
+      
+      alert("Feedback submitted successfully!");
+    } catch (err) {
+      alert(err || "Failed to submit feedback");
+    }
   };
 
-  const handleSubmit = () => {
-    // Handle feedback submission
-    console.log({ rating, feedback });
+  const session = selectedSession || {
+    person: "No pending sessions",
+    skill: "Select a session",
+    date: "",
+    avatar: null,
   };
 
   return (
@@ -89,14 +87,45 @@ function FeedbackPage() {
       </h1>
 
       {/* Feedback Card */}
-      <div className="bg-white rounded-xl p-6 shadow-sm">
-        {/* Section Title */}
-        <h2 className="font-family-poppins text-xl font-bold text-black mb-2">
-          Provide Feedback
-        </h2>
-        <p className="font-family-poppins text-sm text-gray mb-6">
-          Rate your recent session with {session.person} on {session.skill}.
-        </p>
+      {pendingSessions.length > 0 ? (
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          {/* Section Title */}
+          <h2 className="font-family-poppins text-xl font-bold text-black mb-2">
+            Provide Feedback
+          </h2>
+          <p className="font-family-poppins text-sm text-gray mb-6">
+            {pendingSessions.length > 1
+              ? `You have ${pendingSessions.length} sessions waiting for feedback.`
+              : "Rate your recent session."}
+          </p>
+
+          {/* Session Selector */}
+          {pendingSessions.length > 1 && (
+            <div className="mb-4">
+              <label className="font-family-poppins text-sm font-medium text-black mb-2 block">
+                Select Session
+              </label>
+              <select
+                value={selectedSession?.meetingId || ""}
+                onChange={(e) => {
+                  const session = pendingSessions.find(
+                    (s) => s.meetingId === e.target.value
+                  );
+                  setSelectedSession(session);
+                  setRating(5);
+                  setFeedbackText("");
+                }}
+                className="w-full px-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+              >
+                <option value="">Select a session...</option>
+                {pendingSessions.map((s) => (
+                  <option key={s.meetingId} value={s.meetingId}>
+                    {s.person} - {s.skill} ({s.date})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
         <hr className="border-[#E5E5E5] mb-6" />
 
@@ -113,7 +142,7 @@ function FeedbackPage() {
                 />
               ) : (
                 <span className="text-gray text-xl font-medium">
-                  {session.person.charAt(0)}
+                  {session.person?.charAt(0)?.toUpperCase() || "?"}
                 </span>
               )}
             </div>
@@ -163,8 +192,8 @@ function FeedbackPage() {
             Detailed Feedback
           </h3>
           <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
             placeholder="Share your detailed feedback on the session experience, what went well, and areas for improvement..."
             className="w-full px-4 py-3 border border-[#D0D0D0] rounded-xl font-family-poppins text-sm outline-none focus:border-teal resize-none h-32"
           />
@@ -176,11 +205,24 @@ function FeedbackPage() {
             variant="herobtn"
             className="px-6 py-2.5"
             onClick={handleSubmit}
+            disabled={submitting || !selectedSession}
           >
-            Submit Feedback
+            {submitting ? "Submitting..." : "Submit Feedback"}
           </Button>
         </div>
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="font-family-poppins text-sm text-red-600">{error}</p>
+          </div>
+        )}
       </div>
+      ) : (
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <p className="font-family-poppins text-gray text-center py-8">
+            No pending sessions to provide feedback for.
+          </p>
+        </div>
+      )}
 
       {/* Feedback History Section */}
       <div className="mt-8">
@@ -213,9 +255,21 @@ function FeedbackPage() {
         </div>
 
         {/* Feedback Cards */}
-        <div className="space-y-4">
-          {(activeTab === "received" ? feedbackReceived : feedbackGiven).map(
-            (item) => (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-teal" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {(activeTab === "received" ? feedbackReceived : feedbackGiven).length === 0 ? (
+              <div className="bg-white rounded-xl p-6 shadow-sm text-center">
+                <p className="font-family-poppins text-gray">
+                  No {activeTab === "received" ? "feedback received" : "feedback given"} yet.
+                </p>
+              </div>
+            ) : (
+              (activeTab === "received" ? feedbackReceived : feedbackGiven).map(
+                (item) => (
               <div
                 key={item.id}
                 className="bg-white rounded-xl p-6 shadow-sm"
@@ -233,7 +287,7 @@ function FeedbackPage() {
                         />
                       ) : (
                         <span className="text-gray text-lg font-medium">
-                          {item.name.charAt(0)}
+                          {item.name?.charAt(0)?.toUpperCase() || "?"}
                         </span>
                       )}
                     </div>
@@ -280,9 +334,11 @@ function FeedbackPage() {
                   {item.skill}
                 </span>
               </div>
-            )
-          )}
-        </div>
+                )
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
