@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --color-light-bg: #FAFBFB;
+  --color-dark-blue: #1B2847;
+  --color-medium-blue: #2B3A5C;
+  --color-teal: #2A9D90;
+  --color-light-teal: #EDF7F6;
+  --color-red-opacity: #FF000040;
+  --color-red: #FF0000;
+  --color-gray: #575757;
+  --color-light-gray: #F5F5F5;
+
+  --font-family-josefin: "Josefin Sans", sans-serif;
+  --font-family-poppins: "Poppins", sans-serif;
+  --font-family-inter: "Inter", sans-serif;
+}
+
+@layer utilities {
+  .bg-gradient-blue {
+    background: linear-gradient(90deg, #1B2847 0%, #2B3A5C 100%);
+  }
+}
+
+/* Modal Animations */
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modal-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-slide-down {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+}
+
+.modal-overlay-enter {
+  animation: modal-fade-in 0.3s ease-out forwards;
+}
+
+.modal-overlay-exit {
+  animation: modal-fade-out 0.2s ease-in forwards;
+}
+
+.modal-content-enter {
+  animation: modal-slide-up 0.3s ease-out forwards;
+}
+
+.modal-content-exit {
+  animation: modal-slide-down 0.2s ease-in forwards;
+}
+
+/* Hide Scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
