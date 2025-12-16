@@ -1,7 +1,10 @@
 import { Star } from "lucide-react";
+import { useSelector } from "react-redux";
 import AIRecommendedMatches from "../components/Dashboard/AIRecommendedMatches";
 
 function DashboardPage() {
+  const { user } = useSelector((state) => state.auth);
+
   const stats = [
     {
       title: "Credit Balance",
@@ -29,7 +32,7 @@ function DashboardPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="font-family-poppins text-3xl font-bold text-black mb-2">
-          Welcome back, Jane!
+          Welcome back, {user?.name || 'User'}!
         </h1>
         <p className="font-family-poppins text-gray">
           Here's an overview of your SkillBridge activity.

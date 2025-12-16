@@ -1,45 +1,42 @@
-import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import Button from "../../ui/Button";
-
-const matches = [
-  {
-    id: 1,
-    name: "Alex Thompson",
-    skill: "Python Programming",
-    rating: 4.9,
-    matchScore: 95,
-    sessions: 50,
-    location: "San Francisco, CA",
-    timezone: "PST (GMT-8)",
-    avatar: null,
-  },
-  {
-    id: 2,
-    name: "Maria Garcia",
-    skill: "Data Science",
-    rating: 4.8,
-    matchScore: 92,
-    sessions: 40,
-    location: "New York, NY",
-    timezone: "EST (GMT-5)",
-    avatar: null,
-  },
-  {
-    id: 3,
-    name: "Liam Wong",
-    skill: "Web Development",
-    rating: 4.7,
-    matchScore: 90,
-    sessions: 60,
-    location: "Toronto, ON",
-    timezone: "EST (GMT-5)",
-    avatar: null,
-  },
-];
+import { createConversation } from "../../store/chatSlice";
+import { fetchUsers } from "../../store/usersSlice";
 
 function AIRecommendedMatches() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { loading: chatLoading } = useSelector((state) => state.chat);
+  const { users, loading: usersLoading } = useSelector((state) => state.users);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    dispatch(fetchUsers());
+  }, [dispatch]);
+
+  // Filter users based on search query
+  const filteredUsers = users.filter((user) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const name = user.name?.toLowerCase() || "";
+    const skills = user.skillsTeaching?.map((s) => 
+      typeof s === 'string' ? s.toLowerCase() : s.name?.toLowerCase()
+    ).join(" ") || "";
+    return name.includes(query) || skills.includes(query);
+  });
+
+  const handleMessage = async (userId) => {
+    try {
+      const result = await dispatch(createConversation(userId)).unwrap();
+      navigate('/chat', { state: { conversationId: result._id } });
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+      alert('Failed to start conversation. Please try again.');
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm">
@@ -58,6 +55,8 @@ function AIRecommendedMatches() {
           <input
             type="text"
             placeholder="Search by skill or name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal transition-all"
           />
         </div>
@@ -80,83 +79,105 @@ function AIRecommendedMatches() {
       </div>
 
       {/* Match Cards */}
-      <div className="space-y-4">
-        {matches.map((match) => (
-          <div
-            key={match.id}
-            className="border border-[#E5E5E5] rounded-xl p-5"
-          >
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* Avatar */}
-              <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
-                {match.avatar ? (
-                  <img
-                    src={match.avatar}
-                    alt={match.name}
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-gray text-xl font-medium">
-                    {match.name.charAt(0)}
-                  </span>
-                )}
-              </div>
+      {usersLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-teal" />
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="font-family-poppins text-gray">
+            {searchQuery ? "No users found matching your search." : "No other users available."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredUsers.map((user) => {
+            // Get primary skill being taught
+            const primarySkill = user.skillsTeaching?.[0] 
+              ? (typeof user.skillsTeaching[0] === 'string' 
+                  ? user.skillsTeaching[0] 
+                  : user.skillsTeaching[0].name)
+              : "Available for Teaching";
 
-              {/* Info */}
-              <div className="flex-1">
-                <h3 className="font-family-poppins text-lg font-semibold text-black">
-                  {match.name}
-                </h3>
-                <p className="font-family-poppins text-sm text-gray mb-3">
-                  {match.skill}
-                </p>
+            return (
+              <div
+                key={user.id}
+                className="border border-[#E5E5E5] rounded-xl p-5"
+              >
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Avatar */}
+                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user.name}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-gray text-xl font-medium">
+                        {user.name?.charAt(0) || 'U'}
+                      </span>
+                    )}
+                  </div>
 
-                {/* Stats */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                  <span className="flex items-center gap-1">
-                    <Star className="text-yellow-500 fill-yellow-500 " size={14} />
-                    <span className="font-family-poppins text-gray">{match.rating}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Brain className="text-teal" size={14} />
-                    <span className="font-family-poppins text-teal font-medium">
-                      {match.matchScore}% Match
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Monitor className="text-gray" size={14} />
-                    <span className="font-family-poppins text-gray">
-                      {match.sessions} Sessions Taught
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="text-gray" size={14} />
-                    <span className="font-family-poppins text-gray">{match.location}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="text-gray" size={14} />
-                    <span className="font-family-poppins text-gray">{match.timezone}</span>
-                  </span>
+                  {/* Info */}
+                  <div className="flex-1">
+                    <h3 className="font-family-poppins text-lg font-semibold text-black">
+                      {user.name}
+                    </h3>
+                    <p className="font-family-poppins text-sm text-gray mb-3">
+                      {primarySkill}
+                    </p>
+
+                    {/* Stats */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                      {user.rating && (
+                        <span className="flex items-center gap-1">
+                          <Star className="text-yellow-500 fill-yellow-500" size={14} />
+                          <span className="font-family-poppins text-gray">{user.rating}</span>
+                        </span>
+                      )}
+                      {user.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="text-gray" size={14} />
+                          <span className="font-family-poppins text-gray">{user.location}</span>
+                        </span>
+                      )}
+                      {user.skillsTeaching?.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Monitor className="text-gray" size={14} />
+                          <span className="font-family-poppins text-gray">
+                            {user.skillsTeaching.length} Skill{user.skillsTeaching.length !== 1 ? 's' : ''}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 mt-5">
+                  <Button
+                    variant="outline"
+                    className="flex-1 py-2.5"
+                    onClick={() => navigate(`/profile/${user.id}`)}
+                  >
+                    View Profile
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="flex-1 py-2.5"
+                    onClick={() => handleMessage(user.id)}
+                    disabled={chatLoading}
+                  >
+                    {chatLoading ? 'Starting...' : 'Message'}
+                  </Button>
                 </div>
               </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 mt-5">
-              <Button
-                variant="outline"
-                className="flex-1 py-2.5"
-                onClick={() => navigate(`/profile/${match.id}`)}
-              >
-                View Profile
-              </Button>
-              <Button variant="primary" className="flex-1 py-2.5">
-                Message
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

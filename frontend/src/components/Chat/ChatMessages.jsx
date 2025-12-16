@@ -1,52 +1,91 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Phone, Video, MoreVertical, Send, Smile, ArrowLeft } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchMessages, upsertMessage, markConversationAsRead, updateUnreadCount } from "../../store/chatSlice";
+import { getSocket } from "../../socket";
 
 function ChatMessages({ chat, onBack }) {
   const [message, setMessage] = useState("");
+  const dispatch = useDispatch();
+  const { messagesByConversation } = useSelector((state) => state.chat);
+  const { user } = useSelector((state) => state.auth);
 
-  // Mock messages data
-  const messages = [
-    {
-      id: 1,
-      text: "Hi Jane, how are you doing today? I wanted to discuss the upcoming Python session.",
-      time: "18:12",
-      isOwn: false,
+  const conversationId = chat?._id;
+  const messages = messagesByConversation[conversationId] || [];
+
+  useEffect(() => {
+    if (!conversationId) return;
+    dispatch(fetchMessages(conversationId));
+    // Mark conversation as read when opened
+    dispatch(markConversationAsRead(conversationId));
+
+    const socket = getSocket();
+    socket.emit("joinConversation", { conversationId });
+    const onNew = ({ message: msg }) => {
+      // The reducer will handle deduplication by ID
+      dispatch(upsertMessage({ conversationId, message: msg }));
+      
+      // If message is from another user and conversation is currently open, mark as read
+      const meId = user?.id;
+      const isFromOther = String(msg.sender?._id || msg.sender?.id) !== String(meId);
+      if (isFromOther && conversationId) {
+        // Since conversation is open, mark it as read immediately
+        dispatch(markConversationAsRead(conversationId));
+      }
+    };
+    socket.on("newMessage", onNew);
+    return () => {
+      socket.off("newMessage", onNew);
+    };
+  }, [conversationId, dispatch, user, chat]);
+
+  const displayMessages = useMemo(() => {
+    const meId = user?.id;
+    return (messages || []).map((m) => ({
+      _id: m._id,
+      text: m.text,
+      time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      isOwn: String(m.sender?._id || m.sender?.id) === String(meId),
       read: true,
-    },
-    {
-      id: 2,
-      text: "Hi Alice! I am doing well, thanks. I am available to chat about it now if you are free?",
-      time: "18:12",
-      isOwn: true,
-      read: true,
-    },
-    {
-      id: 3,
-      text: "Yes, I am. I had a few questions about the advanced concepts we touched upon last week. Specifically, related to asynchronous programming.",
-      time: "18:12",
-      isOwn: false,
-      read: true,
-    },
-    {
-      id: 4,
-      text: "Understood. We can go through those. Do you have specific examples or scenarios in mind?",
-      time: "18:12",
-      isOwn: true,
-      read: true,
-    },
-    {
-      id: 5,
-      text: "I was trying to implement a web scraper, and faced some challenges with `asyncio`. I also wanted to schedule our next session for next week.",
-      time: "18:12",
-      isOwn: true,
-      read: true,
-    },
-  ];
+    }));
+  }, [messages, user]);
 
   const handleSend = () => {
     if (message.trim()) {
-      // Handle sending message
+      const socket = getSocket();
+      const text = message.trim();
+      const tempId = `tmp-${Date.now()}`;
       setMessage("");
+      
+      // optimistic add with temporary ID
+      dispatch(
+        upsertMessage({
+          conversationId,
+          message: {
+            _id: tempId,
+            text,
+            createdAt: new Date().toISOString(),
+            sender: { _id: user?.id, name: user?.name, avatar: user?.avatar },
+          },
+        })
+      );
+      
+      socket.emit("sendMessage", { conversationId, text }, (ack) => {
+        if (ack?.ok && ack?.message) {
+          // Replace temporary message with real one from server
+          dispatch(
+            upsertMessage({
+              conversationId,
+              message: ack.message,
+            })
+          );
+        } else {
+          // If failed, we could remove the temp message or show an error
+          console.error("sendMessage failed", ack?.error);
+          // Optionally remove the temp message on failure
+          // dispatch(removeMessage({ conversationId, messageId: tempId }));
+        }
+      });
     }
   };
 
@@ -82,16 +121,18 @@ function ChatMessages({ chat, onBack }) {
             {chat.avatar ? (
               <img
                 src={chat.avatar}
-                alt={chat.name}
+                alt={chat.name || 'User'}
                 className="w-full h-full rounded-full object-cover"
               />
             ) : (
-              <span className="text-gray font-medium">{chat.name.charAt(0)}</span>
+              <span className="text-gray font-medium">
+                {chat.name?.charAt(0) || chat.participants?.[0]?.name?.charAt(0) || 'U'}
+              </span>
             )}
           </div>
           <div>
             <h3 className="font-family-poppins text-sm font-semibold text-black">
-              {chat.name}
+              {chat.name || chat.participants?.[0]?.name || 'Unknown User'}
             </h3>
             <p className="font-family-poppins text-xs text-gray">
               last seen 5 mins ago
@@ -102,7 +143,14 @@ function ChatMessages({ chat, onBack }) {
           <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
             <Phone className="text-gray" size={20} />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
+          <button
+            className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+            onClick={() => {
+              // If selected chat has an upcoming meeting, SchedulePanel handles it. Here we just open Jitsi with a generated room.
+              const room = `skillbridge-${chat?._id || "general"}-${Date.now()}`;
+              window.open(`https://meet.jit.si/${room}`, "_blank", "noopener,noreferrer");
+            }}
+          >
             <Video className="text-gray" size={20} />
           </button>
           <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
@@ -113,9 +161,9 @@ function ChatMessages({ chat, onBack }) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
+        {displayMessages.map((msg) => (
           <div
-            key={msg.id}
+            key={msg._id}
             className={`flex ${msg.isOwn ? "justify-end" : "justify-start"}`}
           >
             <div

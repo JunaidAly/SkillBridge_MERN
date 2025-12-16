@@ -1,54 +1,39 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Menu } from "lucide-react";
-
-const conversations = [
-  {
-    id: 1,
-    name: "Alice Johnson",
-    lastMessage: "Chatgram Web was upda",
-    time: "19:48",
-    unread: 1,
-    avatar: null,
-  },
-  {
-    id: 2,
-    name: "Jessica Drew",
-    lastMessage: "Ok, see you later",
-    time: "18:30",
-    unread: 2,
-    avatar: null,
-  },
-  {
-    id: 3,
-    name: "David Moore",
-    lastMessage: "You: I don't remember any",
-    time: "18:16",
-    unread: 0,
-    avatar: null,
-  },
-  {
-    id: 4,
-    name: "Greg James",
-    lastMessage: "I got a job at SpaceX",
-    time: "18:02",
-    unread: 0,
-    avatar: null,
-  },
-  {
-    id: 5,
-    name: "Emily Dorson",
-    lastMessage: "Table for four, 5PM. Be there.",
-    time: "17:42",
-    unread: 0,
-    avatar: null,
-  },
-];
+import { useDispatch, useSelector } from "react-redux";
+import { fetchConversations } from "../../store/chatSlice";
 
 function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const dispatch = useDispatch();
+  const { conversations, loading } = useSelector((state) => state.chat);
+  const { user } = useSelector((state) => state.auth);
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.name.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    dispatch(fetchConversations());
+  }, [dispatch]);
+
+  const displayConversations = useMemo(() => {
+    const meId = user?.id;
+    return (conversations || []).map((c) => {
+      const other = (c.participants || []).find((p) => String(p._id || p.id) !== String(meId));
+      const lastText = c.lastMessage?.text || "";
+      const ts = c.lastMessage?.createdAt || c.updatedAt;
+      const time = ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+      return {
+        _id: c._id,
+        name: other?.name || "Conversation",
+        avatar: other?.avatar || null,
+        lastMessage: lastText,
+        time,
+        unread: c.unreadCount || 0,
+        otherUserId: other?._id || other?.id,
+      };
+    });
+  }, [conversations, user]);
+
+  const filteredConversations = displayConversations.filter((conv) =>
+    (conv.name || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -80,12 +65,15 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
 
       {/* Conversations List */}
       <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="p-4 font-family-poppins text-sm text-gray">Loading…</div>
+        )}
         {filteredConversations.map((conv) => (
           <div
-            key={conv.id}
+            key={conv._id}
             onClick={() => onSelectChat(conv)}
             className={`flex items-center gap-3 p-4 cursor-pointer transition-all ${
-              selectedChat?.id === conv.id
+              selectedChat?._id === conv._id
                 ? "bg-light-teal"
                 : "hover:bg-gray-50"
             }`}
@@ -100,7 +88,7 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
                 />
               ) : (
                 <span className="text-gray text-lg font-medium">
-                  {conv.name.charAt(0)}
+                  {conv.name?.charAt(0) || 'U'}
                 </span>
               )}
             </div>
