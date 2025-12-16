@@ -1,6 +1,45 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+const skillSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  sessions: {
+    type: Number,
+    default: 0,
+  },
+  rating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  },
+});
+
+const certificationSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  issuer: {
+    type: String,
+    trim: true,
+  },
+  year: {
+    type: String,
+  },
+  fileUrl: {
+    type: String,
+  },
+  filePublicId: {
+    type: String,
+  },
+});
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -21,7 +60,7 @@ const userSchema = new mongoose.Schema(
         return !this.googleId && !this.facebookId;
       },
       minlength: 6,
-      select: false, // Don't return password by default
+      select: false,
     },
     googleId: {
       type: String,
@@ -35,6 +74,54 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['user', 'admin'],
       default: 'user',
+    },
+    bio: {
+      type: String,
+      maxlength: 500,
+      default: '',
+    },
+    location: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    languages: [{
+      type: String,
+      trim: true,
+    }],
+    timezone: {
+      type: String,
+      default: '',
+    },
+    avatar: {
+      type: String,
+      default: '',
+    },
+    avatarPublicId: {
+      type: String,
+      default: '',
+    },
+    skillsTeaching: [skillSchema],
+    skillsLearning: [{
+      type: String,
+      trim: true,
+    }],
+    certifications: [certificationSchema],
+    stats: {
+      sessionsTaught: {
+        type: Number,
+        default: 0,
+      },
+      sessionsLearned: {
+        type: Number,
+        default: 0,
+      },
+      avgRating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+      },
     },
   },
   {

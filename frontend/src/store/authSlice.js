@@ -92,6 +92,17 @@ const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    updateUserProfile: (state, action) => {
+      if (state.user && action.payload) {
+        state.user = { ...state.user, ...action.payload };
+        const stored = localStorage.getItem('auth');
+        if (stored) {
+          const authData = JSON.parse(stored);
+          authData.user = state.user;
+          localStorage.setItem('auth', JSON.stringify(authData));
+        }
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -166,6 +177,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearError, updateUserProfile } = authSlice.actions;
 export default authSlice.reducer;
 

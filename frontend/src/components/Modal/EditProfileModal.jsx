@@ -1,35 +1,50 @@
-import { useState, useEffect } from "react";
-import { X, Search , Pencil} from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { X, Camera, Loader2 } from "lucide-react";
 import Button from "../../ui/Button";
+import { updateProfile, uploadAvatar } from "../../store/profileSlice";
 
 function EditProfileModal({ isOpen, onClose, user }) {
+  const dispatch = useDispatch();
+  const { updateLoading } = useSelector((state) => state.profile);
+  const fileInputRef = useRef(null);
+
   const [isClosing, setIsClosing] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [avatarFile, setAvatarFile] = useState(null);
   const [formData, setFormData] = useState({
-    name: user?.name || "",
-    bio: user?.bio || "",
-    email: user?.email || "",
-    location: user?.location || "",
-    languages: ["Urdu", "English"],
+    name: "",
+    bio: "",
+    location: "",
+    timezone: "",
+    languages: [],
   });
 
-  const [skillsTeaching, setSkillsTeaching] = useState([
-    "React Development",
-    "TypeScript",
-    "UI/UX",
-  ]);
+  const availableLanguages = ["Urdu", "English", "Arabic", "Spanish", "French", "German", "Chinese"];
+  const timezones = [
+    "PST (GMT-8)",
+    "MST (GMT-7)",
+    "CST (GMT-6)",
+    "EST (GMT-5)",
+    "GMT (GMT+0)",
+    "CET (GMT+1)",
+    "IST (GMT+5:30)",
+    "PKT (GMT+5)",
+  ];
 
-  const [skillsLearning, setSkillsLearning] = useState([
-    "Machine Learning",
-    "Social Media Marketing",
-    "Data Science",
-  ]);
-
-  const [certifications, setCertifications] = useState([
-    "AWS Solution Architect",
-    "Google UI/UX Design",
-  ]);
-
-  const availableLanguages = ["Urdu", "English", "Arabic"];
+  useEffect(() => {
+    if (user && isOpen) {
+      setFormData({
+        name: user.name || "",
+        bio: user.bio || "",
+        location: user.location || "",
+        timezone: user.timezone || "",
+        languages: user.languages || [],
+      });
+      setAvatarPreview(user.avatar || null);
+      setAvatarFile(null);
+    }
+  }, [user, isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -59,16 +74,35 @@ function EditProfileModal({ isOpen, onClose, user }) {
     }));
   };
 
-  const removeSkillTeaching = (skill) => {
-    setSkillsTeaching((prev) => prev.filter((s) => s !== skill));
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
   };
 
-  const removeSkillLearning = (skill) => {
-    setSkillsLearning((prev) => prev.filter((s) => s !== skill));
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarFile(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAvatarPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const removeCertification = (cert) => {
-    setCertifications((prev) => prev.filter((c) => c !== cert));
+  const handleSave = async () => {
+    try {
+      // Upload avatar if changed
+      if (avatarFile) {
+        await dispatch(uploadAvatar(avatarFile)).unwrap();
+      }
+
+      // Update profile data
+      await dispatch(updateProfile(formData)).unwrap();
+      handleClose();
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+    }
   };
 
   if (!isOpen) return null;
@@ -80,10 +114,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
       }`}
     >
       {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={handleClose}
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
 
       {/* Modal Content */}
       <div
@@ -94,27 +125,52 @@ function EditProfileModal({ isOpen, onClose, user }) {
         {/* Header */}
         <div className="sticky top-0 z-50 bg-white p-6 pb-4 border-b border-[#E5E5E5] flex items-start gap-4">
           {/* Avatar */}
-          <div className=" relative w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
-            <span className="text-gray text-2xl font-medium">
-              {formData.name.charAt(0)}
-            </span>
-              <div className="absolute bottom-0 right-0 w-5 h-5 bg-teal rounded-full flex items-center justify-center">
-              <Pencil className="text-white" size={12} />
+          <div className="relative w-16 h-16 shrink-0">
+            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt={formData.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-gray text-2xl font-medium">
+                  {formData.name?.charAt(0)?.toUpperCase()}
+                </span>
+              )}
             </div>
+            <button
+              onClick={handleAvatarClick}
+              className="absolute bottom-0 right-0 w-6 h-6 bg-teal rounded-full flex items-center justify-center hover:bg-teal/90 transition-colors"
+            >
+              <Camera className="text-white" size={12} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
 
           <div className="flex-1">
             <h2 className="font-family-poppins text-xl font-bold text-black">
-              {formData.name}
+              {formData.name || "Your Name"}
             </h2>
             <textarea
               value={formData.bio}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, bio: e.target.value }))
               }
+              placeholder="Write a short bio about yourself..."
+              maxLength={500}
               className="w-full mt-2 p-2 text-sm text-gray border border-[#E5E5E5] rounded-lg resize-none font-family-poppins outline-none focus:border-teal"
               rows={3}
             />
+            <p className="text-xs text-gray mt-1">
+              {formData.bio.length}/500 characters
+            </p>
           </div>
 
           <button
@@ -143,25 +199,38 @@ function EditProfileModal({ isOpen, onClose, user }) {
               />
             </div>
 
-            <div className="flex flex-col  md:items-end">
+            <div className="flex flex-col md:items-end">
               <label className="font-family-poppins text-sm font-medium text-gray block mb-2">
-                Language
+                Languages
               </label>
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-40 overflow-y-auto">
                 {availableLanguages.map((lang) => (
                   <label
                     key={lang}
                     className="flex items-center gap-2 cursor-pointer"
                   >
                     <div
-                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      onClick={() => handleLanguageToggle(lang)}
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer ${
                         formData.languages.includes(lang)
                           ? "border-teal bg-teal"
                           : "border-gray"
                       }`}
                     >
                       {formData.languages.includes(lang) && (
-                        <div className="w-2 h-2 bg-teal rounded-full" />
+                        <svg
+                          className="w-3 h-3 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
                       )}
                     </div>
                     <span className="font-family-poppins text-sm text-black">
@@ -171,21 +240,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
                 ))}
               </div>
             </div>
-          </div>
-
-          {/* Email */}
-          <div className="max-w-md">
-            <label className="font-family-poppins text-sm font-medium text-gray block mb-2">
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, email: e.target.value }))
-              }
-              className="w-full px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
-            />
           </div>
 
           {/* Location */}
@@ -199,101 +253,30 @@ function EditProfileModal({ isOpen, onClose, user }) {
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, location: e.target.value }))
               }
+              placeholder="e.g., San Francisco, CA"
               className="w-full px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
             />
           </div>
 
-          {/* Skills I Teach */}
-          <div className="relative max-w-md">
-            <label className="font-family-poppins text-sm font-medium text-black block mb-2">
-              Skills I Teach
+          {/* Timezone */}
+          <div className="max-w-md">
+            <label className="font-family-poppins text-sm font-medium text-gray block mb-2">
+              Timezone
             </label>
-            <div className="relative mb-3">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray z-10"
-                size={18}
-              />
-              <input
-                type="text"
-                placeholder="Search"
-                className="w-full pl-10 pr-4 py-3 bg-light-gray rounded-full font-family-poppins text-sm  relative z-0"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {skillsTeaching.map((skill) => (
-                <span
-                  key={skill}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
-                >
-                  {skill}
-                  <button onClick={() => removeSkillTeaching(skill)}>
-                    <X size={14} />
-                  </button>
-                </span>
+            <select
+              value={formData.timezone}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, timezone: e.target.value }))
+              }
+              className="w-full px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal bg-white"
+            >
+              <option value="">Select timezone</option>
+              {timezones.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
               ))}
-            </div>
-          </div>
-
-          {/* Skills I'm Learning */}
-          <div className="relative max-w-md">
-            <label className="font-family-poppins text-sm font-medium text-black block mb-2">
-              Skills I'm Learning
-            </label>
-            <div className="relative mb-3">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray z-10"
-                size={18}
-              />
-              <input
-                type="text"
-                placeholder="Search"
-                className="w-full pl-10 pr-4 py-3 bg-light-gray rounded-full font-family-poppins text-sm  relative z-0"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {skillsLearning.map((skill) => (
-                <span
-                  key={skill}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
-                >
-                  {skill}
-                  <button onClick={() => removeSkillLearning(skill)}>
-                    <X size={14} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Certifications */}
-          <div className="relative max-w-md">
-            <label className="font-family-poppins text-sm font-medium text-black block mb-2">
-              Certifications
-            </label>
-            <div className="relative mb-3">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray z-10"
-                size={18}
-              />
-              <input
-                type="text"
-                placeholder="Search"
-                className="w-full pl-10 pr-4 py-3 bg-light-gray rounded-full font-family-poppins text-sm  relative z-0"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {certifications.map((cert) => (
-                <span
-                  key={cert}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
-                >
-                  {cert}
-                  <button onClick={() => removeCertification(cert)}>
-                    <X size={14} />
-                  </button>
-                </span>
-              ))}
-            </div>
+            </select>
           </div>
         </div>
 
@@ -303,11 +286,18 @@ function EditProfileModal({ isOpen, onClose, user }) {
             variant="outline"
             className="px-6 py-2.5"
             onClick={handleClose}
+            disabled={updateLoading}
           >
             Cancel
           </Button>
-          <Button variant="herobtn" className="px-6 py-2.5 bg-dark-blue">
-            Save
+          <Button
+            variant="herobtn"
+            className="px-6 py-2.5 bg-dark-blue flex items-center gap-2"
+            onClick={handleSave}
+            disabled={updateLoading}
+          >
+            {updateLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {updateLoading ? "Saving..." : "Save"}
           </Button>
         </div>
       </div>
