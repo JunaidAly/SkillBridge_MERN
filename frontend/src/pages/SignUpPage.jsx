@@ -9,7 +9,7 @@ import { registerUser, loginWithFacebook, clearError } from "../store/authSlice"
 function SignUpPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading, error, token } = useSelector((state) => state.auth);
+  const { loading, error, token, verificationEmail } = useSelector((state) => state.auth);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -19,8 +19,14 @@ function SignUpPage() {
   useEffect(() => {
     if (token) {
       navigate("/dashboard", { replace: true });
+    } else if (verificationEmail) {
+      // Redirect to 2FA page if verification is required
+      navigate('/verify', { 
+        state: { email: verificationEmail, purpose: 'signup' },
+        replace: true 
+      });
     }
-  }, [token, navigate]);
+  }, [token, verificationEmail, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;

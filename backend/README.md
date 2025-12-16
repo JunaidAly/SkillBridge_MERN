@@ -44,6 +44,34 @@ npm start
 - `JWT_EXPIRE` - JWT token expiration time
 - `FRONTEND_URL` - Frontend URL for CORS
 
+### Email Configuration (for 2FA verification codes)
+
+To send verification emails, add these variables to your `.env` file:
+
+- `SMTP_HOST` - SMTP server host (e.g., `smtp.gmail.com` for Gmail)
+- `SMTP_PORT` - SMTP server port (default: 587, use 465 for SSL)
+- `SMTP_USER` - SMTP username/email
+- `SMTP_PASS` - SMTP password or app password
+- `SMTP_FROM` - From email address (optional, defaults to SMTP_USER)
+- `SMTP_SECURE` - Use secure connection (true/false, default: false for port 587)
+
+**Example for Gmail:**
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM=your-email@gmail.com
+SMTP_SECURE=false
+```
+
+**Note:** For Gmail, you need to:
+1. Enable 2-Step Verification
+2. Generate an App Password (not your regular password)
+3. Use the App Password as `SMTP_PASS`
+
+**If SMTP is not configured**, verification codes will be logged to the console instead of being sent via email.
+
 ## Project Structure
 
 ```

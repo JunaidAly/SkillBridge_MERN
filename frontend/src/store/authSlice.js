@@ -14,6 +14,7 @@ const initialState = {
   token: storedAuth?.token || null,
   loading: false,
   error: null,
+  verificationEmail: null,
 };
 
 export const registerUser = createAsyncThunk(
@@ -21,6 +22,10 @@ export const registerUser = createAsyncThunk(
   async ({ name, email, password }, { rejectWithValue }) => {
     try {
       const res = await apiClient.post('/auth/register', { name, email, password });
+      // If requires verification, return the email for 2FA page
+      if (res.data.requiresVerification) {
+        return { requiresVerification: true, email: res.data.email };
+      }
       return res.data;
     } catch (err) {
       const message = err.response?.data?.message || 'Registration failed';
@@ -34,6 +39,10 @@ export const loginUser = createAsyncThunk(
   async ({ email, password }, { rejectWithValue }) => {
     try {
       const res = await apiClient.post('/auth/login', { email, password });
+      // If requires verification, return the email for 2FA page
+      if (res.data.requiresVerification) {
+        return { requiresVerification: true, email: res.data.email };
+      }
       return res.data;
     } catch (err) {
       const message = err.response?.data?.message || 'Login failed';
@@ -79,6 +88,32 @@ export const loginWithFacebook = createAsyncThunk(
   }
 );
 
+export const verifyCode = createAsyncThunk(
+  'auth/verify',
+  async ({ email, code }, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post('/auth/verify', { email, code });
+      return res.data;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Verification failed';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+export const resendCode = createAsyncThunk(
+  'auth/resendCode',
+  async ({ email, purpose }, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post('/auth/resend-code', { email, purpose });
+      return res.data;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to resend code';
+      return rejectWithValue(message);
+    }
+  }
+);
+
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -87,6 +122,7 @@ const authSlice = createSlice({
       state.user = null;
       state.token = null;
       state.error = null;
+      state.verificationEmail = null;
       localStorage.removeItem('auth');
     },
     clearError: (state) => {
@@ -112,6 +148,11 @@ const authSlice = createSlice({
       })
       .addCase(registerUser.fulfilled, (state, action) => {
         state.loading = false;
+        // If requires verification, don't set token/user yet
+        if (action.payload.requiresVerification) {
+          state.verificationEmail = action.payload.email;
+          return;
+        }
         state.user = action.payload.user;
         state.token = action.payload.token;
         localStorage.setItem(
@@ -129,6 +170,11 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
+        // If requires verification, don't set token/user yet
+        if (action.payload.requiresVerification) {
+          state.verificationEmail = action.payload.email;
+          return;
+        }
         state.user = action.payload.user;
         state.token = action.payload.token;
         localStorage.setItem(
@@ -173,6 +219,36 @@ const authSlice = createSlice({
       .addCase(loginWithFacebook.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || 'Facebook login failed';
+      })
+      .addCase(verifyCode.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(verifyCode.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        state.token = action.payload.token;
+        state.verificationEmail = null;
+        localStorage.setItem(
+          'auth',
+          JSON.stringify({ user: action.payload.user, token: action.payload.token })
+        );
+      })
+      .addCase(verifyCode.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Verification failed';
+      })
+      .addCase(resendCode.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(resendCode.fulfilled, (state) => {
+        state.loading = false;
+        state.error = null;
+      })
+      .addCase(resendCode.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Failed to resend code';
       });
   },
 });

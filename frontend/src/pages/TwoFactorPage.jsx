@@ -1,11 +1,45 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, useLocation } from "react-router-dom";
 import Button from "../ui/AuthButton";
+import { verifyCode, resendCode, clearError } from "../store/authSlice";
 
 function TwoFactorPage() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { loading, error, token } = useSelector((state) => state.auth);
+  
   const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const [email, setEmail] = useState("");
+  const [purpose, setPurpose] = useState("login");
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    // Get email and purpose from location state or auth state
+    const stateEmail = location.state?.email;
+    const statePurpose = location.state?.purpose || "login";
+    
+    if (stateEmail) {
+      setEmail(stateEmail);
+      setPurpose(statePurpose);
+    } else {
+      // If no email in state, redirect back to login
+      navigate("/login", { replace: true });
+    }
+  }, [location.state, navigate]);
+
+  useEffect(() => {
+    if (token) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [token, navigate]);
 
   const handleChange = (index, value) => {
+    // Only allow numbers
+    if (value && !/^\d$/.test(value)) return;
     if (value.length > 1) return;
+    
     const newCode = [...code];
     newCode[index] = value;
     setCode(newCode);
@@ -23,12 +57,39 @@ function TwoFactorPage() {
       const prevInput = document.getElementById(`code-${index - 1}`);
       if (prevInput) prevInput.focus();
     }
+    // Handle Enter to submit if all fields are filled
+    if (e.key === "Enter" && code.join("").length === 6) {
+      handleSubmit(e);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const fullCode = code.join("");
-    console.log("Submitted code:", fullCode);
+    
+    if (fullCode.length !== 6) {
+      return;
+    }
+
+    if (!email) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    dispatch(clearError());
+    await dispatch(verifyCode({ email, code: fullCode }));
+  };
+
+  const handleResend = async () => {
+    if (!email || !purpose) return;
+    
+    setResending(true);
+    dispatch(clearError());
+    await dispatch(resendCode({ email, purpose }));
+    setResending(false);
+    
+    // Clear code inputs
+    setCode(["", "", "", "", "", ""]);
   };
 
   return (
@@ -64,18 +125,34 @@ function TwoFactorPage() {
               ))}
             </div>
 
+            {error && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="font-family-poppins text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mt-4">
               <p className="font-family-poppins text-sm text-[#575757]">
                 It may take a minute to receive your code.
                 <br />
                 Haven't received it?{" "}
-                <a href="#" className="text-teal font-medium hover:underline">
-                  Resend a new code.
-                </a>
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resending || loading}
+                  className="text-teal font-medium hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resending ? "Sending..." : "Resend a new code."}
+                </button>
               </p>
 
-              <Button variant="primary" className="rounded-full px-10 py-3">
-                Submit
+              <Button
+                type="submit"
+                variant="primary"
+                className="rounded-full px-10 py-3"
+                disabled={loading || code.join("").length !== 6}
+              >
+                {loading ? "Verifying..." : "Submit"}
               </Button>
             </div>
           </form>

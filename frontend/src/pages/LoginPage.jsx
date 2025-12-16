@@ -10,15 +10,21 @@ function LoginPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { loading, error, token } = useSelector((state) => state.auth);
+  const { loading, error, token, verificationEmail } = useSelector((state) => state.auth);
   const [formData, setFormData] = useState({ email: "", password: "" });
   const redirectPath = location.state?.from?.pathname || "/dashboard";
 
   useEffect(() => {
     if (token) {
       navigate(redirectPath, { replace: true });
+    } else if (verificationEmail) {
+      // Redirect to 2FA page if verification is required
+      navigate('/verify', { 
+        state: { email: verificationEmail, purpose: 'login' },
+        replace: true 
+      });
     }
-  }, [token, navigate, redirectPath]);
+  }, [token, verificationEmail, navigate, redirectPath]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
