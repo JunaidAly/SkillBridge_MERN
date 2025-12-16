@@ -1,4 +1,5 @@
-import { EyeOff } from "lucide-react";
+import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 function Input({
   type = "text",
@@ -11,6 +12,10 @@ function Input({
   className = "",
   ...props
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword && showPassword ? "text" : type;
+
   const baseStyles =
     "font-poppins w-full px-4 py-3 rounded-lg border outline-none transition-all";
 
@@ -33,13 +38,29 @@ function Input({
       )}
       <div className="relative">
         <input
+          id={name}
+          name={name}
+          type={inputType}
           placeholder={placeholder}
           value={value}
           onChange={onChange}
-          className={`${baseStyles} ${variants[variant]} ${className}`}
+          className={`${baseStyles} ${variants[variant]} ${isPassword ? "pr-10" : ""} ${className}`}
           {...props}
         />
-        {type === "password" && <EyeOff className="absolute right-2 top-1/2 -translate-y-1/2" />}
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? (
+              <EyeOff className="w-5 h-5" />
+            ) : (
+              <Eye className="w-5 h-5" />
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

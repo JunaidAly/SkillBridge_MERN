@@ -1,9 +1,35 @@
+import { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, Link } from "react-router-dom";
 import Input from "../ui/Input";
 import Button from "../ui/AuthButton";
-import { EyeOff } from "lucide-react";
+import { registerUser, clearError } from "../store/authSlice";
+
 function SignUpPage() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { loading, error, token } = useSelector((state) => state.auth);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
+
+  useEffect(() => {
+    if (token) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [token, navigate]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) dispatch(clearError());
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    dispatch(registerUser(formData));
   };
 
   return (
@@ -131,30 +157,41 @@ function SignUpPage() {
             </p>
           </div>
 
+          {error && (
+            <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm mb-2">
+              {error}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
               label="Full Name"
-              name="fullName"
+              name="name"
               type="text"
               placeholder="Enter your full name"
+              value={formData.name}
+              onChange={handleChange}
             />
             <Input
               label="Email Address"
               name="email"
               type="email"
               placeholder="Enter your email"
+              value={formData.email}
+              onChange={handleChange}
             />
               <Input
                 label="Password"
                 name="password"
                 type="password"
                 placeholder="Create a password"
+                value={formData.password}
+                onChange={handleChange}
               />
 
           
 
-            <Button variant="primary" className="w-full rounded-full py-4 mt-2">
-              Create Account
+            <Button variant="primary" type="submit" disabled={loading} className="w-full rounded-full py-4 mt-2">
+              {loading ? "Creating..." : "Create Account"}
             </Button>
           </form>
 
@@ -203,9 +240,9 @@ function SignUpPage() {
 
           <p className="text-center mt-8 font-family-poppins text-sm text-[#575757]">
             Already have an account?{" "}
-            <a href="/login" className="text-teal font-medium hover:underline">
+            <Link to="/login" className="text-teal font-medium hover:underline">
               Sign In
-            </a>
+            </Link>
           </p>
         </div>
       </div>

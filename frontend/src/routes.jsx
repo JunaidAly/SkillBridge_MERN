@@ -10,6 +10,7 @@ import ViewProfilePage from "./pages/ViewProfilePage";
 import ChatPage from "./pages/ChatPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import CreditsPage from "./pages/CreditsPage";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const router = createBrowserRouter([
   {
@@ -29,7 +30,11 @@ const router = createBrowserRouter([
     element: <TwoFactorPage />,
   },
   {
-    element: <DashboardLayout />,
+    element: (
+      <ProtectedRoute>
+        <DashboardLayout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         path: "/dashboard",

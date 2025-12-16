@@ -1,9 +1,33 @@
+import { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import Input from "../ui/Input";
 import Button from "../ui/AuthButton";
-import { Link } from "react-router-dom";
+import { loginUser, clearError } from "../store/authSlice";
+
 function LoginPage() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { loading, error, token } = useSelector((state) => state.auth);
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const redirectPath = location.state?.from?.pathname || "/dashboard";
+
+  useEffect(() => {
+    if (token) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [token, navigate, redirectPath]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) dispatch(clearError());
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    dispatch(loginUser(formData));
   };
 
   return (
@@ -20,18 +44,27 @@ function LoginPage() {
             </p>
           </div>
 
+          {error && (
+            <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm mb-2">
+              {error}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
               label="Email Address"
               name="email"
               type="email"
               placeholder="Enter your email"
+              value={formData.email}
+              onChange={handleChange}
             />
             <Input
               label="Password"
               name="password"
               type="password"
               placeholder="Enter your password"
+              value={formData.password}
+              onChange={handleChange}
             />
 
             <div className="flex items-center justify-end text-sm">
@@ -39,11 +72,14 @@ function LoginPage() {
                 Forgot password?
               </a>
             </div>
-            <Link to={"/dashboard"}>
-            <Button variant="primary" className="w-full rounded-full py-4 mt-2">
-              Sign In
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-full py-4 mt-2"
+            >
+              {loading ? "Signing In..." : "Sign In"}
             </Button>
-            </Link>
           </form>
 
           <div className="flex items-center gap-4 my-6">
