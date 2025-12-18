@@ -5,6 +5,7 @@ import chatReducer from './chatSlice';
 import meetingsReducer from './meetingsSlice';
 import usersReducer from './usersSlice';
 import feedbackReducer from './feedbackSlice';
+import creditsReducer from './creditsSlice';
 
 const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ const store = configureStore({
     meetings: meetingsReducer,
     users: usersReducer,
     feedback: feedbackReducer,
+    credits: creditsReducer,
   },
 });
 

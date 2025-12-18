@@ -1,13 +1,18 @@
+import { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import CreditStats from "../components/Credits/CreditStats";
 import RecentTransactions from "../components/Credits/RecentTransactions";
 import BuyCredits from "../components/Credits/BuyCredits";
+import { fetchWallet, fetchTransactions } from "../store/creditsSlice";
 
 function CreditsPage() {
-  const creditData = {
-    balance: 250,
-    earned: 125,
-    spent: 75,
-  };
+  const dispatch = useDispatch();
+  const { wallet, transactions, loading } = useSelector((state) => state.credits);
+
+  useEffect(() => {
+    dispatch(fetchWallet());
+    dispatch(fetchTransactions({ limit: 20, offset: 0 }));
+  }, [dispatch]);
 
   return (
     <div>
@@ -24,20 +29,22 @@ function CreditsPage() {
       {/* Stats Cards */}
       <div className="mb-6">
         <CreditStats
-          balance={creditData.balance}
-          earned={creditData.earned}
-          spent={creditData.spent}
+          balance={wallet?.balance ?? 0}
+          earned={wallet?.earnedThisMonth ?? 0}
+          spent={wallet?.spentThisMonth ?? 0}
+          loading={loading}
         />
       </div>
 
       {/* Transactions and Buy Credits */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <RecentTransactions />
+        <div className="lg:col-span-3">
+          <RecentTransactions transactions={transactions} loading={loading} />
         </div>
-        <div>
+        {/* Buy Credits For Future Module*/}
+        {/* <div>
           <BuyCredits />
-        </div>
+        </div> */}
       </div>
     </div>
   );

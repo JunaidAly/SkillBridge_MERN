@@ -1,6 +1,6 @@
 import { Wallet, TrendingUp, TrendingDown } from "lucide-react";
 
-function CreditStats({ balance, earned, spent }) {
+function CreditStats({ balance, earned, spent, loading }) {
   const stats = [
     {
       title: "Available Balance",
@@ -45,11 +45,15 @@ function CreditStats({ balance, earned, spent }) {
             >
               <Icon className={stat.iconColor} size={18} />
             </div>
-            <p
-              className={`font-family-poppins text-3xl font-bold ${stat.valueColor}`}
-            >
-              {stat.value}
-            </p>
+            {loading ? (
+              <div className="h-9 w-20 bg-gray-200 rounded animate-pulse" />
+            ) : (
+              <p
+                className={`font-family-poppins text-3xl font-bold ${stat.valueColor}`}
+              >
+                {stat.value}
+              </p>
+            )}
           </div>
         );
       })}

@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Wallet } from "lucide-react";
 import Button from "../../ui/Button";
 import { useDispatch, useSelector } from "react-redux";
 import { createMeeting, fetchMeetings } from "../../store/meetingsSlice";
+import { fetchWallet, earnTeachingCredits, spendLearningCredits } from "../../store/creditsSlice";
 
 function SchedulePanel({ selectedChat }) {
   const [selectedDate, setSelectedDate] = useState("2025-12-02");
   const [selectedTime, setSelectedTime] = useState("15:00");
+  const [sessionRole, setSessionRole] = useState("teaching"); // "teaching" or "learning"
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const dispatch = useDispatch();
   const { meetings } = useSelector((s) => s.meetings);
+  const { wallet } = useSelector((s) => s.credits);
 
   useEffect(() => {
     dispatch(fetchMeetings());
+    dispatch(fetchWallet());
   }, [dispatch]);
 
   const upcomingReminders = useMemo(() => {
@@ -33,20 +38,67 @@ function SchedulePanel({ selectedChat }) {
       alert("Select a chat first to propose a session.");
       return;
     }
-    const startsAt = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
-    const title = `Session with ${selectedChat.name}`;
-    await dispatch(
-      createMeeting({
-        conversationId: selectedChat._id,
-        otherUserId: selectedChat.otherUserId,
-        title,
-        startsAt,
-      })
-    ).unwrap();
+
+    // Check balance if learning
+    if (sessionRole === "learning" && (!wallet || wallet.balance < 25)) {
+      alert("Insufficient credits. You need 25 credits to schedule a learning session.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const startsAt = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
+      const roleLabel = sessionRole === "teaching" ? "Teaching" : "Learning from";
+      const title = `${roleLabel} ${selectedChat.name}`;
+
+      const meetingResult = await dispatch(
+        createMeeting({
+          conversationId: selectedChat._id,
+          otherUserId: selectedChat.otherUserId,
+          title,
+          startsAt,
+        })
+      ).unwrap();
+
+      // Process credits based on role
+      if (sessionRole === "teaching") {
+        await dispatch(
+          earnTeachingCredits({
+            meetingId: meetingResult._id,
+            learnerId: selectedChat.otherUserId,
+          })
+        ).unwrap();
+      } else {
+        await dispatch(
+          spendLearningCredits({
+            meetingId: meetingResult._id,
+            teacherId: selectedChat.otherUserId,
+          })
+        ).unwrap();
+      }
+
+      // Refresh wallet
+      dispatch(fetchWallet());
+    } catch (err) {
+      alert(err || "Failed to schedule session");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="w-full lg:w-80 bg-white border-l border-[#E5E5E5] flex flex-col h-full p-4">
+      {/* Credit Balance */}
+      <div className="mb-4 p-3 bg-teal/10 rounded-lg flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Wallet className="text-teal" size={18} />
+          <span className="font-family-poppins text-sm text-gray">Balance</span>
+        </div>
+        <span className="font-family-poppins text-lg font-bold text-teal">
+          {wallet?.balance ?? 0}
+        </span>
+      </div>
+
       {/* Schedule Session */}
       <div className="mb-6">
         <h2 className="font-family-poppins text-lg font-semibold text-black mb-1">
@@ -55,6 +107,35 @@ function SchedulePanel({ selectedChat }) {
         <p className="font-family-poppins text-xs text-gray mb-4">
           Time Zone: UTC-5 (Auto-sync)
         </p>
+
+        {/* Role Selector */}
+        <div className="mb-4">
+          <label className="font-family-poppins text-xs text-gray mb-2 block">
+            I want to:
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSessionRole("teaching")}
+              className={`flex-1 py-2 px-3 rounded-lg font-family-poppins text-sm transition-all ${
+                sessionRole === "teaching"
+                  ? "bg-teal text-white"
+                  : "bg-gray-100 text-gray hover:bg-gray-200"
+              }`}
+            >
+              Teach (+25)
+            </button>
+            <button
+              onClick={() => setSessionRole("learning")}
+              className={`flex-1 py-2 px-3 rounded-lg font-family-poppins text-sm transition-all ${
+                sessionRole === "learning"
+                  ? "bg-orange-500 text-white"
+                  : "bg-gray-100 text-gray hover:bg-gray-200"
+              }`}
+            >
+              Learn (-25)
+            </button>
+          </div>
+        </div>
 
         {/* Date Picker */}
         <div className="mb-4">
@@ -75,9 +156,20 @@ function SchedulePanel({ selectedChat }) {
           />
         </div>
 
-        <Button variant="herobtn" className="w-full py-2.5" onClick={handlePropose}>
-          Propose New Session
+        <Button
+          variant="herobtn"
+          className="w-full py-2.5"
+          onClick={handlePropose}
+          disabled={isSubmitting || (sessionRole === "learning" && (!wallet || wallet.balance < 25))}
+        >
+          {isSubmitting ? "Scheduling..." : "Propose New Session"}
         </Button>
+
+        {sessionRole === "learning" && wallet && wallet.balance < 25 && (
+          <p className="font-family-poppins text-xs text-red-500 mt-2 text-center">
+            Insufficient credits for learning session
+          </p>
+        )}
       </div>
 
       {/* Upcoming Reminders */}

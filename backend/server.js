@@ -13,6 +13,7 @@ import userRoutes from './routes/user.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import meetingsRoutes from './routes/meetings.routes.js';
 import feedbackRoutes from './routes/feedback.routes.js';
+import creditsRoutes from './routes/credits.routes.js';
 import Conversation from './models/Conversation.js';
 import Message from './models/Message.js';
 
@@ -61,6 +62,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/meetings', meetingsRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/credits', creditsRoutes);
 
 // Socket auth
 io.use((socket, next) => {
