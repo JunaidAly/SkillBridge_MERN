@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { Phone, Video, MoreVertical, Send, Smile, ArrowLeft } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { Phone, Video, MoreVertical, Send, Smile, ArrowLeft, Trash2 } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchMessages, upsertMessage, markConversationAsRead, updateUnreadCount } from "../../store/chatSlice";
+import { fetchMessages, upsertMessage, markConversationAsRead, deleteConversation } from "../../store/chatSlice";
 import { getSocket } from "../../socket";
 
 function ChatMessages({ chat, onBack }) {
   const [message, setMessage] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const menuRef = useRef(null);
   const dispatch = useDispatch();
   const { messagesByConversation } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
@@ -96,6 +99,28 @@ function ChatMessages({ chat, onBack }) {
     }
   };
 
+  const handleDeleteChat = () => {
+    setShowMenu(false);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    dispatch(deleteConversation(conversationId));
+    setShowDeleteConfirm(false);
+    onBack?.();
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   if (!chat) {
     return (
       <div className="flex-1 flex items-center justify-center bg-light-bg">
@@ -153,9 +178,25 @@ function ChatMessages({ chat, onBack }) {
           >
             <Video className="text-gray" size={20} />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-            <MoreVertical className="text-gray" size={20} />
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+              onClick={() => setShowMenu(!showMenu)}
+            >
+              <MoreVertical className="text-gray" size={20} />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[150px]">
+                <button
+                  onClick={handleDeleteChat}
+                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-family-poppins"
+                >
+                  <Trash2 size={16} />
+                  Delete Chat
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -211,6 +252,34 @@ function ChatMessages({ chat, onBack }) {
           </button>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+            <h3 className="font-family-poppins text-lg font-semibold text-black mb-2">
+              Delete Conversation
+            </h3>
+            <p className="font-family-poppins text-sm text-gray mb-4">
+              Are you sure you want to delete this conversation? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm font-family-poppins text-gray hover:bg-gray-100 rounded-lg transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm font-family-poppins text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

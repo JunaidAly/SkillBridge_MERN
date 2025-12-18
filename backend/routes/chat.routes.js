@@ -128,6 +128,27 @@ router.post('/conversations/:id/read', authenticateToken, async (req, res) => {
   }
 });
 
+// Delete a conversation
+router.delete('/conversations/:id', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+    if (!conversation.participants.map(String).includes(String(userId))) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+
+    // Delete all messages in the conversation
+    await Message.deleteMany({ conversation: conversation._id });
+    // Delete the conversation itself
+    await Conversation.findByIdAndDelete(conversation._id);
+
+    res.json({ success: true, message: 'Conversation deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Send message (REST fallback; realtime uses socket but this is handy too)
 router.post('/conversations/:id/messages', authenticateToken, async (req, res) => {
   try {

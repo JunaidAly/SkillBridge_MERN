@@ -49,6 +49,18 @@ export const markConversationAsRead = createAsyncThunk(
   }
 );
 
+export const deleteConversation = createAsyncThunk(
+  'chat/deleteConversation',
+  async (conversationId, { rejectWithValue }) => {
+    try {
+      await apiClient.delete(`/chat/conversations/${conversationId}`);
+      return conversationId;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to delete conversation');
+    }
+  }
+);
+
 const chatSlice = createSlice({
   name: 'chat',
   initialState: {
@@ -181,6 +193,20 @@ const chatSlice = createSlice({
         if (idx >= 0) {
           state.conversations[idx].unreadCount = 0;
         }
+      })
+      .addCase(deleteConversation.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteConversation.fulfilled, (state, action) => {
+        state.loading = false;
+        const conversationId = action.payload;
+        state.conversations = state.conversations.filter((c) => c._id !== conversationId);
+        delete state.messagesByConversation[conversationId];
+      })
+      .addCase(deleteConversation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
   },
 });
