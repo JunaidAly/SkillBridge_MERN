@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Mail, MapPin, Globe, Clock, Star, ArrowLeft, Award, Loader2 } from "lucide-react";
+import { MapPin, Globe, Clock, Star, ArrowLeft, Award, Loader2, Monitor, FileText } from "lucide-react";
 import Button from "../ui/Button";
 import apiClient from "../api/client";
 import { createConversation } from "../store/chatSlice";
+import { downloadBlob } from "../utils/downloadBlob";
 
 function ViewProfilePage() {
   const { id } = useParams();
@@ -42,6 +43,34 @@ function ViewProfilePage() {
     } catch (error) {
       console.error('Failed to create conversation:', error);
       alert('Failed to start conversation. Please try again.');
+    }
+  };
+
+  const handleDownloadCertification = async (cert) => {
+    try {
+      const res = await apiClient.get(`/users/${id}/certifications/${cert._id}/download`, {
+        responseType: "blob",
+      });
+      const cd = res.headers?.["content-disposition"] || "";
+      const matchStar = cd.match(/filename\*\=UTF-8''([^;]+)/i);
+      const match = cd.match(/filename=\"?([^\";]+)\"?/i);
+      let filename = matchStar ? decodeURIComponent(matchStar[1]) : match ? match[1] : "";
+      if (!filename) filename = cert.fileName || `${cert.name || "certificate"}`;
+      if (!filename.includes(".") && cert.fileMimeType) {
+        const map = {
+          "application/pdf": "pdf",
+          "image/jpeg": "jpg",
+          "image/png": "png",
+          "image/webp": "webp",
+          "image/gif": "gif",
+        };
+        const ext = map[cert.fileMimeType];
+        if (ext) filename = `${filename}.${ext}`;
+      }
+      downloadBlob(res.data, filename);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to download certificate");
     }
   };
 
@@ -189,19 +218,18 @@ function ViewProfilePage() {
                       {typeof skill === 'string' ? skill : skill.name}
                     </p>
                     <div className="flex items-center gap-3 mt-1">
-                      {skill.sessions && (
+                      <span className="flex items-center gap-1">
+                        <Monitor className="text-gray" size={12} />
                         <span className="font-family-poppins text-xs text-gray">
-                          {skill.sessions} sessions
+                          {skill.sessions || 0} sessions
                         </span>
-                      )}
-                      {skill.rating && (
-                        <span className="flex items-center gap-1">
-                          <Star className="text-yellow-500 fill-yellow-500" size={12} />
-                          <span className="font-family-poppins text-xs text-gray">
-                            {skill.rating.toFixed(1)}
-                          </span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Star className="text-yellow-500 fill-yellow-500" size={12} />
+                        <span className="font-family-poppins text-xs text-gray">
+                          {skill.rating?.toFixed(1) || "0.0"}
                         </span>
-                      )}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -222,13 +250,29 @@ function ViewProfilePage() {
 
           <div className="space-y-4">
             {user.skillsLearning?.length > 0 ? (
-              user.skillsLearning.map((skill, index) => (
-                <div key={index} className="p-5 bg-teal/10 shadow-xl rounded-2xl">
-                  <p className="font-family-poppins font-medium text-black">
-                    {typeof skill === 'string' ? skill : skill.name}
-                  </p>
-                </div>
-              ))
+              user.skillsLearning.map((skill) => {
+                const skillName = typeof skill === 'string' ? skill : skill.name;
+                const skillProgress = typeof skill === 'object' ? (skill.progress || 0) : 0;
+                return (
+                  <div key={skill._id || skillName} className="p-5 bg-teal/10 shadow-xl rounded-2xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="font-family-poppins font-medium text-black">
+                        {skillName}
+                      </p>
+                      <span className="font-family-poppins text-sm text-gray">
+                        {skillProgress}%
+                      </span>
+                    </div>
+                    {/* Progress Bar */}
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-teal rounded-full transition-all duration-300"
+                        style={{ width: `${skillProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <p className="text-gray text-sm text-center py-4">
                 No learning goals added yet.
@@ -254,13 +298,22 @@ function ViewProfilePage() {
                 <div className="w-12 h-12 bg-teal/20 rounded-full flex items-center justify-center shrink-0">
                   <Award className="text-teal" size={24} />
                 </div>
-                <div>
-                  <p className="font-family-poppins font-medium text-black">
+                <div className="flex-1 min-w-0">
+                  <p className="font-family-poppins font-medium text-black truncate">
                     {cert.name}
                   </p>
                   <p className="font-family-poppins text-xs text-gray">
                     {cert.issuer} {cert.year && `(${cert.year})`}
                   </p>
+                  {cert.fileUrl && (
+                    <button
+                      onClick={() => handleDownloadCertification(cert)}
+                      className="flex items-center gap-1 text-teal text-xs hover:underline mt-1"
+                    >
+                      <FileText size={12} />
+                      Download
+                    </button>
+                  )}
                 </div>
               </div>
             ))

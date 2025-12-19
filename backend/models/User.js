@@ -19,6 +19,20 @@ const skillSchema = new mongoose.Schema({
   },
 });
 
+const learningSkillSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  progress: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100,
+  },
+});
+
 const certificationSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -108,10 +122,7 @@ const userSchema = new mongoose.Schema(
       default: '',
     },
     skillsTeaching: [skillSchema],
-    skillsLearning: [{
-      type: String,
-      trim: true,
-    }],
+    skillsLearning: [learningSkillSchema],
     certifications: [certificationSchema],
     stats: {
       sessionsTaught: {

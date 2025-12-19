@@ -115,12 +115,26 @@ export const addLearningSkill = createAsyncThunk(
 // Remove skill to learn
 export const removeLearningSkill = createAsyncThunk(
   'profile/removeLearningSkill',
-  async (skillName, { rejectWithValue }) => {
+  async (skillId, { rejectWithValue }) => {
     try {
-      const res = await apiClient.delete(`/users/me/skills/learning/${encodeURIComponent(skillName)}`);
+      const res = await apiClient.delete(`/users/me/skills/learning/${skillId}`);
       return res.data.skillsLearning;
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to remove learning goal';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+// Update learning skill progress
+export const updateLearningProgress = createAsyncThunk(
+  'profile/updateLearningProgress',
+  async ({ skillId, progress }, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.put(`/users/me/skills/learning/${skillId}`, { progress });
+      return res.data.skillsLearning;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to update progress';
       return rejectWithValue(message);
     }
   }
@@ -245,6 +259,12 @@ const profileSlice = createSlice({
       })
       // Remove learning skill
       .addCase(removeLearningSkill.fulfilled, (state, action) => {
+        if (state.profile) {
+          state.profile.skillsLearning = action.payload;
+        }
+      })
+      // Update learning progress
+      .addCase(updateLearningProgress.fulfilled, (state, action) => {
         if (state.profile) {
           state.profile.skillsLearning = action.payload;
         }

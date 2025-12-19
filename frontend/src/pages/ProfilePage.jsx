@@ -12,6 +12,7 @@ import {
   removeTeachingSkill,
   removeLearningSkill,
   removeCertification,
+  updateLearningProgress,
 } from "../store/profileSlice";
 
 function ProfilePage() {
@@ -31,8 +32,12 @@ function ProfilePage() {
     dispatch(removeTeachingSkill(skillId));
   };
 
-  const handleRemoveLearningSkill = (skillName) => {
-    dispatch(removeLearningSkill(skillName));
+  const handleRemoveLearningSkill = (skillId) => {
+    dispatch(removeLearningSkill(skillId));
+  };
+
+  const handleProgressChange = (skillId, progress) => {
+    dispatch(updateLearningProgress({ skillId, progress: parseInt(progress) }));
   };
 
   const handleRemoveCertification = (certId) => {
@@ -269,22 +274,56 @@ function ProfilePage() {
 
           <div className="space-y-3">
             {profile.skillsLearning?.length > 0 ? (
-              profile.skillsLearning.map((skill, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-5 bg-teal/10 shadow-xl rounded-2xl"
-                >
-                  <p className="font-family-poppins font-medium text-black">
-                    {skill}
-                  </p>
-                  <button
-                    onClick={() => handleRemoveLearningSkill(skill)}
-                    className="p-1 hover:bg-gray-100 rounded"
+              profile.skillsLearning.map((skill) => {
+                // Handle both string and object formats for backward compatibility
+                const skillName = typeof skill === 'string' ? skill : skill.name;
+                const skillId = typeof skill === 'string' ? skill : skill._id;
+                const skillProgress = typeof skill === 'object' ? (skill.progress || 0) : 0;
+
+                return (
+                  <div
+                    key={skillId}
+                    className="p-5 bg-teal/10 shadow-xl rounded-2xl"
                   >
-                    <X className="text-gray" size={18} />
-                  </button>
-                </div>
-              ))
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="font-family-poppins font-medium text-black">
+                        {skillName}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="font-family-poppins text-sm text-gray">
+                          {skillProgress}%
+                        </span>
+                        <button
+                          onClick={() => handleRemoveLearningSkill(skillId)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                        >
+                          <X className="text-gray" size={18} />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Progress Bar */}
+                    <div className="relative">
+                      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-teal rounded-full transition-all duration-300"
+                          style={{ width: `${skillProgress}%` }}
+                        />
+                      </div>
+                      {/* Progress Slider - only show for object format with _id */}
+                      {typeof skill === 'object' && skill._id && (
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={skillProgress}
+                          onChange={(e) => handleProgressChange(skill._id, e.target.value)}
+                          className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <p className="text-gray text-sm text-center py-4">
                 No learning goals added yet. Click "Add Goal" to get started.
