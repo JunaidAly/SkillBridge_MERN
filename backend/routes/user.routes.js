@@ -439,6 +439,7 @@ router.get('/:userId', authenticateToken, async (req, res) => {
         name: user.name,
         bio: user.bio,
         location: user.location,
+        timezone: user.timezone,
         languages: user.languages,
         avatar: user.avatar,
         skillsTeaching: user.skillsTeaching,

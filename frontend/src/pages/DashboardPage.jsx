@@ -1,26 +1,44 @@
+import { useEffect } from "react";
 import { Star } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchWallet } from "../store/creditsSlice";
+import { fetchMeetings } from "../store/meetingsSlice";
+import { fetchProfile } from "../store/profileSlice";
 import AIRecommendedMatches from "../components/Dashboard/AIRecommendedMatches";
 
 function DashboardPage() {
+  const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
+  const { wallet } = useSelector((state) => state.credits);
+  const { meetings } = useSelector((state) => state.meetings);
+  const { profile } = useSelector((state) => state.profile);
+
+  useEffect(() => {
+    dispatch(fetchWallet());
+    dispatch(fetchMeetings());
+    dispatch(fetchProfile());
+  }, [dispatch]);
+
+  const creditBalance = wallet?.balance ?? 0;
+  const scheduledSessions = Array.isArray(meetings) ? meetings.length : 0;
+  const averageRating = profile?.stats?.avgRating > 0 ? profile.stats.avgRating : "—";
 
   const stats = [
     {
       title: "Credit Balance",
-      value: "1,250",
+      value: creditBalance,
       icon: "/assets/credit.svg",
       isImage: true,
     },
     {
       title: "Scheduled Sessions",
-      value: "3",
+      value: scheduledSessions,
       icon: "/assets/sessions.svg",
       isImage: true,
     },
     {
       title: "Average Rating",
-      value: "4.9",
+      value: averageRating,
       icon: Star,
       isImage: false,
       iconColor: "text-yellow-500 fill-yellow-500",

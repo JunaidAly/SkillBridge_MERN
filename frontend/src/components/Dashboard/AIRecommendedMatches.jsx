@@ -1,10 +1,32 @@
 import { useEffect, useState } from "react";
-import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2 } from "lucide-react";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, Globe } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import Button from "../../ui/Button";
 import { createConversation } from "../../store/chatSlice";
 import { fetchUsers } from "../../store/usersSlice";
+
+// Helper to calculate AI match score based on user data
+function calculateMatchScore(user) {
+  let score = 70; // Base score
+
+  // Add points for having skills
+  if (user.skillsTeaching?.length > 0) score += 5;
+  if (user.skillsTeaching?.length > 2) score += 5;
+
+  // Add points for rating
+  if (user.stats?.avgRating > 0) {
+    score += Math.min(user.stats.avgRating * 2, 10);
+  }
+
+  // Add points for sessions taught
+  if (user.stats?.sessionsTaught > 0) {
+    score += Math.min(user.stats.sessionsTaught, 10);
+  }
+
+  // Cap at 99%
+  return Math.min(score, 99);
+}
 
 function AIRecommendedMatches() {
   const navigate = useNavigate();
@@ -41,11 +63,13 @@ function AIRecommendedMatches() {
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-6">
-        <Sparkles className="text-black" size={20} />
-        <h2 className="font-family-poppins text-xl font-semibold text-black">
-          AI Recommended Matches
-        </h2>
+      <div className="flex flex-col gap-3 mb-6">
+        <div className="flex items-center gap-2">
+          <Sparkles className="text-black" size={20} />
+          <h2 className="font-family-poppins text-xl font-semibold text-black">
+            AI Recommended Matches
+          </h2>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -93,11 +117,14 @@ function AIRecommendedMatches() {
         <div className="space-y-4">
           {filteredUsers.map((user) => {
             // Get primary skill being taught
-            const primarySkill = user.skillsTeaching?.[0] 
-              ? (typeof user.skillsTeaching[0] === 'string' 
-                  ? user.skillsTeaching[0] 
+            const primarySkill = user.skillsTeaching?.[0]
+              ? (typeof user.skillsTeaching[0] === 'string'
+                  ? user.skillsTeaching[0]
                   : user.skillsTeaching[0].name)
               : "Available for Teaching";
+
+            // Calculate AI match score
+            const matchScore = calculateMatchScore(user);
 
             return (
               <div
@@ -125,32 +152,52 @@ function AIRecommendedMatches() {
                     <h3 className="font-family-poppins text-lg font-semibold text-black">
                       {user.name}
                     </h3>
-                    <p className="font-family-poppins text-sm text-gray mb-3">
+                    <p className="font-family-poppins text-sm text-gray mb-2">
                       {primarySkill}
                     </p>
-
                     {/* Stats */}
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                      {user.rating && (
-                        <span className="flex items-center gap-1">
-                          <Star className="text-yellow-500 fill-yellow-500" size={14} />
-                          <span className="font-family-poppins text-gray">{user.rating}</span>
+                      
+                      {/* AI Match Score */}
+                      <span className="flex items-center gap-1">
+                        <Brain className="text-teal" size={14} />
+                        <span className="font-family-poppins text-teal font-medium">
+                          {matchScore}% Match
                         </span>
-                      )}
+                      </span>
+
+                      {/* Sessions Taught */}
+                      <span className="flex items-center gap-1">
+                        <Monitor className="text-gray" size={14} />
+                        <span className="font-family-poppins text-gray">
+                          {user.stats?.sessionsTaught || 0} Sessions Taught
+                        </span>
+                      </span>
+
+                      {/* Location */}
                       {user.location && (
                         <span className="flex items-center gap-1">
                           <MapPin className="text-gray" size={14} />
                           <span className="font-family-poppins text-gray">{user.location}</span>
                         </span>
                       )}
-                      {user.skillsTeaching?.length > 0 && (
+
+                      {/* Timezone */}
+                      {user.timezone && (
                         <span className="flex items-center gap-1">
-                          <Monitor className="text-gray" size={14} />
-                          <span className="font-family-poppins text-gray">
-                            {user.skillsTeaching.length} Skill{user.skillsTeaching.length !== 1 ? 's' : ''}
-                          </span>
+                          <Clock className="text-gray" size={14} />
+                          <span className="font-family-poppins text-gray">{user.timezone}</span>
                         </span>
                       )}
+
+                      {/* Rating */}
+                      <span className="flex items-center gap-1">
+                        <Star className="text-yellow-500 fill-yellow-500" size={14} />
+                        <span className="font-family-poppins text-gray">
+                          {user.stats?.avgRating > 0 ? user.stats.avgRating : "New"}
+                        </span>
+                      </span>
+
                     </div>
                   </div>
                 </div>
