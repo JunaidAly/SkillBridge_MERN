@@ -17,6 +17,15 @@ const messageSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    messageType: {
+      type: String,
+      enum: ['text', 'meeting_invite', 'system'],
+      default: 'text',
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     readBy: [
       {
         type: mongoose.Schema.Types.ObjectId,

@@ -2,7 +2,9 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import Conversation from '../models/Conversation.js';
 import Meeting from '../models/Meeting.js';
+import Message from '../models/Message.js';
 import User from '../models/User.js';
+import { sendMeetingInviteEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 
@@ -154,6 +156,68 @@ router.post('/', authenticateToken, async (req, res) => {
     });
 
     const populated = await Meeting.findById(meeting._id).populate('participants', 'name email avatar');
+
+    // Send meeting link message in chat if conversation exists
+    if (convId) {
+      const meetingDate = new Date(startsAt).toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const meetingMessage = `📅 Meeting Scheduled!\n\n` +
+        `📌 ${title.trim()}\n` +
+        `🕐 ${meetingDate}\n` +
+        `⏱️ Duration: ${duration || 60} minutes\n` +
+        `${skill ? `📚 Skill: ${skill}\n` : ''}` +
+        `\n🔗 Join Meeting: ${joinUrl}`;
+
+      const message = await Message.create({
+        conversation: convId,
+        sender: userId,
+        text: meetingMessage,
+        readBy: [userId],
+        messageType: 'meeting_invite',
+        metadata: {
+          meetingId: meeting._id,
+          joinUrl,
+          startsAt: new Date(startsAt),
+        },
+      });
+
+      // Update conversation's last message
+      await Conversation.findByIdAndUpdate(convId, { lastMessage: message._id });
+
+      // Emit socket event for real-time update (will be picked up by connected clients)
+      const io = req.app.get('io');
+      if (io) {
+        const populatedMessage = await Message.findById(message._id).populate('sender', 'name email avatar');
+        io.to(`conv:${convId}`).emit('newMessage', { message: populatedMessage });
+      }
+    }
+
+    // Send email notification to the other participant
+    const creator = await User.findById(userId).select('name email');
+    const otherUser = await User.findById(otherUserId).select('name email');
+
+    if (otherUser?.email && creator?.name) {
+      const meetingDetails = {
+        title: title.trim(),
+        startsAt: new Date(startsAt),
+        duration: duration || 60,
+        skill: skill?.trim() || null,
+        joinUrl,
+        organizerName: creator.name,
+      };
+
+      // Send email asynchronously (don't wait for it)
+      sendMeetingInviteEmail(otherUser.email, otherUser.name, meetingDetails)
+        .catch(err => console.error('Failed to send meeting email:', err));
+    }
+
     res.status(201).json({ success: true, meeting: populated });
   } catch (error) {
     res.status(500).json({ message: error.message });

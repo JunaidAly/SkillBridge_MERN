@@ -34,6 +34,9 @@ const io = new SocketIOServer(server, {
   },
 });
 
+// Make io available to routes
+app.set('io', io);
+
 // Middleware
 app.use(cors());
 app.use(express.json());

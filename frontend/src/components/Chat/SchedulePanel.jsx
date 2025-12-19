@@ -232,56 +232,58 @@ function SchedulePanel({ selectedChat }) {
       </div>
 
       {/* Upcoming Reminders */}
-      <div className="flex-1">
+      <div className="flex-1 flex flex-col min-h-0">
         <h2 className="font-family-poppins text-lg font-semibold text-black mb-4">
           Upcoming Reminders
         </h2>
 
-        <div className="space-y-3">
-          {upcomingReminders.length === 0 ? (
-            <p className="font-family-poppins text-xs text-gray text-center py-4">
-              No upcoming sessions scheduled
-            </p>
-          ) : (
-            upcomingReminders.map((reminder) => (
-              <div
-                key={reminder.id}
-                className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-all group"
-                onClick={() => reminder.joinUrl && window.open(reminder.joinUrl, "_blank", "noopener,noreferrer")}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-family-poppins text-sm font-medium text-black truncate">
-                      {reminder.title}
-                    </h3>
-                    {reminder.sessionType && (
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          reminder.sessionType === "teaching"
-                            ? "bg-teal/20 text-teal"
-                            : "bg-orange-100 text-orange-600"
-                        }`}
-                      >
-                        {reminder.sessionType === "teaching" ? "Teaching" : "Learning"}
-                      </span>
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+          <div className="space-y-3 pr-1">
+            {upcomingReminders.length === 0 ? (
+              <p className="font-family-poppins text-xs text-gray text-center py-4">
+                No upcoming sessions scheduled
+              </p>
+            ) : (
+              upcomingReminders.map((reminder) => (
+                <div
+                  key={reminder.id}
+                  className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-all group"
+                  onClick={() => reminder.joinUrl && window.open(reminder.joinUrl, "_blank", "noopener,noreferrer")}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-family-poppins text-sm font-medium text-black truncate">
+                        {reminder.title}
+                      </h3>
+                      {reminder.sessionType && (
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                            reminder.sessionType === "teaching"
+                              ? "bg-teal/20 text-teal"
+                              : "bg-orange-100 text-orange-600"
+                          }`}
+                        >
+                          {reminder.sessionType === "teaching" ? "Teaching" : "Learning"}
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-family-poppins text-xs text-gray mt-1">
+                      {reminder.date}
+                    </p>
+                    {reminder.skill && (
+                      <p className="font-family-poppins text-xs text-teal mt-0.5">
+                        {reminder.skill}
+                      </p>
                     )}
                   </div>
-                  <p className="font-family-poppins text-xs text-gray mt-1">
-                    {reminder.date}
-                  </p>
-                  {reminder.skill && (
-                    <p className="font-family-poppins text-xs text-teal mt-0.5">
-                      {reminder.skill}
-                    </p>
-                  )}
+                  <ChevronRight
+                    className="text-gray group-hover:text-teal transition-colors shrink-0"
+                    size={18}
+                  />
                 </div>
-                <ChevronRight
-                  className="text-gray group-hover:text-teal transition-colors shrink-0"
-                  size={18}
-                />
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>
