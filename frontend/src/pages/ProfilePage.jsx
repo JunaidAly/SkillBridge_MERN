@@ -114,12 +114,6 @@ function ProfilePage() {
                 </span>
               )}
             </div>
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="absolute bottom-18 right-0 w-8 h-8 bg-teal rounded-full flex items-center justify-center hover:bg-teal/90 transition-colors"
-            >
-              <Pencil className="text-white" size={14} />
-            </button>
           </div>
 
           {/* User Info */}

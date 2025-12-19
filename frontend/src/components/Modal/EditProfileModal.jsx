@@ -1,8 +1,93 @@
 import { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { X, Camera, Loader2 } from "lucide-react";
+import { X, Camera, Loader2, Search, Check } from "lucide-react";
 import Button from "../../ui/Button";
-import { updateProfile, uploadAvatar } from "../../store/profileSlice";
+import {
+  updateProfile,
+  uploadAvatar,
+  addTeachingSkill,
+  removeTeachingSkill,
+  addLearningSkill,
+  removeLearningSkill,
+  addCertification,
+  removeCertification,
+} from "../../store/profileSlice";
+
+// Skill suggestions list
+const skillSuggestions = [
+  "React Development",
+  "JavaScript",
+  "TypeScript",
+  "Node.js",
+  "Python",
+  "Machine Learning",
+  "Data Science",
+  "UI/UX Design",
+  "Graphic Design",
+  "Digital Marketing",
+  "Social Media Marketing",
+  "Content Writing",
+  "SEO",
+  "AWS",
+  "DevOps",
+  "Docker",
+  "Kubernetes",
+  "MongoDB",
+  "PostgreSQL",
+  "Java",
+  "C++",
+  "Go",
+  "Rust",
+  "Swift",
+  "iOS Development",
+  "Android Development",
+  "Flutter",
+  "React Native",
+  "Vue.js",
+  "Angular",
+  "PHP",
+  "Laravel",
+  "Django",
+  "FastAPI",
+  "GraphQL",
+  "REST API",
+  "Blockchain",
+  "Web3",
+  "Solidity",
+  "Cybersecurity",
+  "Network Security",
+  "Cloud Computing",
+  "Azure",
+  "Google Cloud",
+  "Linux",
+  "Git",
+  "Agile",
+  "Scrum",
+  "Project Management",
+  "Product Management",
+];
+
+// Certification suggestions list
+const certificationSuggestions = [
+  "AWS Solutions Architect",
+  "AWS Developer Associate",
+  "AWS Cloud Practitioner",
+  "Google Cloud Professional",
+  "Google UI/UX Design",
+  "Google Data Analytics",
+  "Microsoft Azure Administrator",
+  "Cisco CCNA",
+  "CompTIA Security+",
+  "CompTIA Network+",
+  "PMP Certification",
+  "Scrum Master",
+  "Kubernetes Administrator",
+  "Docker Certified Associate",
+  "Meta Frontend Developer",
+  "IBM Data Science",
+  "Salesforce Administrator",
+  "Oracle Java Certification",
+];
 
 function EditProfileModal({ isOpen, onClose, user }) {
   const dispatch = useDispatch();
@@ -19,6 +104,19 @@ function EditProfileModal({ isOpen, onClose, user }) {
     timezone: "",
     languages: [],
   });
+
+  // Skills and certifications state
+  const [skillsTeaching, setSkillsTeaching] = useState([]);
+  const [skillsLearning, setSkillsLearning] = useState([]);
+  const [certifications, setCertifications] = useState([]);
+  const [teachingSearch, setTeachingSearch] = useState("");
+  const [learningSearch, setLearningSearch] = useState("");
+  const [certificationSearch, setCertificationSearch] = useState("");
+
+  // Suggestions state
+  const [teachingSuggestions, setTeachingSuggestions] = useState([]);
+  const [learningSuggestions, setLearningSuggestions] = useState([]);
+  const [certSuggestions, setCertSuggestions] = useState([]);
 
   const availableLanguages = ["Urdu", "English", "Arabic", "Spanish", "French", "German", "Chinese"];
   const timezones = [
@@ -43,6 +141,12 @@ function EditProfileModal({ isOpen, onClose, user }) {
       });
       setAvatarPreview(user.avatar || null);
       setAvatarFile(null);
+      setSkillsTeaching(user.skillsTeaching || []);
+      setSkillsLearning(user.skillsLearning || []);
+      setCertifications(user.certifications || []);
+      setTeachingSearch("");
+      setLearningSearch("");
+      setCertificationSearch("");
     }
   }, [user, isOpen]);
 
@@ -56,6 +160,48 @@ function EditProfileModal({ isOpen, onClose, user }) {
       document.body.style.overflow = "unset";
     };
   }, [isOpen]);
+
+  // Filter teaching skill suggestions
+  useEffect(() => {
+    if (teachingSearch.trim()) {
+      const filtered = skillSuggestions.filter(
+        (skill) =>
+          skill.toLowerCase().includes(teachingSearch.toLowerCase()) &&
+          !skillsTeaching.some((s) => s.name?.toLowerCase() === skill.toLowerCase())
+      );
+      setTeachingSuggestions(filtered.slice(0, 6));
+    } else {
+      setTeachingSuggestions([]);
+    }
+  }, [teachingSearch, skillsTeaching]);
+
+  // Filter learning skill suggestions
+  useEffect(() => {
+    if (learningSearch.trim()) {
+      const filtered = skillSuggestions.filter(
+        (skill) =>
+          skill.toLowerCase().includes(learningSearch.toLowerCase()) &&
+          !skillsLearning.includes(skill)
+      );
+      setLearningSuggestions(filtered.slice(0, 6));
+    } else {
+      setLearningSuggestions([]);
+    }
+  }, [learningSearch, skillsLearning]);
+
+  // Filter certification suggestions
+  useEffect(() => {
+    if (certificationSearch.trim()) {
+      const filtered = certificationSuggestions.filter(
+        (cert) =>
+          cert.toLowerCase().includes(certificationSearch.toLowerCase()) &&
+          !certifications.some((c) => c.name?.toLowerCase() === cert.toLowerCase())
+      );
+      setCertSuggestions(filtered.slice(0, 6));
+    } else {
+      setCertSuggestions([]);
+    }
+  }, [certificationSearch, certifications]);
 
   const handleClose = () => {
     setIsClosing(true);
@@ -87,6 +233,125 @@ function EditProfileModal({ isOpen, onClose, user }) {
         setAvatarPreview(reader.result);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Skills handlers
+  const handleAddTeachingSkill = async (e) => {
+    if (e.key === "Enter" && teachingSearch.trim()) {
+      e.preventDefault();
+      const skillName = teachingSearch.trim();
+      const exists = skillsTeaching.some(
+        (s) => s.name?.toLowerCase() === skillName.toLowerCase()
+      );
+      if (!exists) {
+        try {
+          const updatedSkills = await dispatch(addTeachingSkill(skillName)).unwrap();
+          setSkillsTeaching(updatedSkills);
+        } catch (error) {
+          console.error("Failed to add teaching skill:", error);
+        }
+      }
+      setTeachingSearch("");
+      setTeachingSuggestions([]);
+    }
+  };
+
+  const handleRemoveTeachingSkill = async (skillId) => {
+    try {
+      const updatedSkills = await dispatch(removeTeachingSkill(skillId)).unwrap();
+      setSkillsTeaching(updatedSkills);
+    } catch (error) {
+      console.error("Failed to remove teaching skill:", error);
+    }
+  };
+
+  const handleAddLearningSkill = async (e) => {
+    if (e.key === "Enter" && learningSearch.trim()) {
+      e.preventDefault();
+      const skillName = learningSearch.trim();
+      if (!skillsLearning.includes(skillName)) {
+        try {
+          const updatedSkills = await dispatch(addLearningSkill(skillName)).unwrap();
+          setSkillsLearning(updatedSkills);
+        } catch (error) {
+          console.error("Failed to add learning skill:", error);
+        }
+      }
+      setLearningSearch("");
+      setLearningSuggestions([]);
+    }
+  };
+
+  const handleRemoveLearningSkill = async (skillName) => {
+    try {
+      const updatedSkills = await dispatch(removeLearningSkill(skillName)).unwrap();
+      setSkillsLearning(updatedSkills);
+    } catch (error) {
+      console.error("Failed to remove learning skill:", error);
+    }
+  };
+
+  const handleAddCertification = async (e) => {
+    if (e.key === "Enter" && certificationSearch.trim()) {
+      e.preventDefault();
+      const certName = certificationSearch.trim();
+      const exists = certifications.some(
+        (c) => c.name?.toLowerCase() === certName.toLowerCase()
+      );
+      if (!exists) {
+        try {
+          const updatedCerts = await dispatch(addCertification({ name: certName })).unwrap();
+          setCertifications(updatedCerts);
+        } catch (error) {
+          console.error("Failed to add certification:", error);
+        }
+      }
+      setCertificationSearch("");
+      setCertSuggestions([]);
+    }
+  };
+
+  const handleRemoveCertification = async (certId) => {
+    try {
+      const updatedCerts = await dispatch(removeCertification(certId)).unwrap();
+      setCertifications(updatedCerts);
+    } catch (error) {
+      console.error("Failed to remove certification:", error);
+    }
+  };
+
+  // Handle suggestion clicks
+  const handleTeachingSuggestionClick = async (suggestion) => {
+    try {
+      const updatedSkills = await dispatch(addTeachingSkill(suggestion)).unwrap();
+      setSkillsTeaching(updatedSkills);
+      setTeachingSearch("");
+      setTeachingSuggestions([]);
+    } catch (error) {
+      console.error("Failed to add teaching skill:", error);
+    }
+  };
+
+  const handleLearningSuggestionClick = async (suggestion) => {
+    try {
+      const updatedSkills = await dispatch(addLearningSkill(suggestion)).unwrap();
+      setSkillsLearning(updatedSkills);
+      setLearningSearch("");
+      setLearningSuggestions([]);
+    } catch (error) {
+      console.error("Failed to add learning skill:", error);
+    }
+  };
+
+  const handleCertSuggestionClick = async (suggestion) => {
+    try {
+      const updatedCerts = await dispatch(addCertification({ name: suggestion })).unwrap();
+      setCertifications(updatedCerts);
+      setCertificationSearch("");
+      setCertSuggestions([]);
+    } catch (error) {
+      console.error("Failed to add certification:", error);
     }
   };
 
@@ -199,44 +464,27 @@ function EditProfileModal({ isOpen, onClose, user }) {
               />
             </div>
 
-            <div className="flex flex-col md:items-end">
-              <label className="font-family-poppins text-sm font-medium text-gray block mb-2">
+            <div>
+              <label className="font-family-poppins text-sm font-medium text-gray block mb-3">
                 Languages
               </label>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
+              <div className="flex flex-wrap gap-2">
                 {availableLanguages.map((lang) => (
-                  <label
+                  <button
                     key={lang}
-                    className="flex items-center gap-2 cursor-pointer"
+                    type="button"
+                    onClick={() => handleLanguageToggle(lang)}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full font-family-poppins text-sm transition-all ${
+                      formData.languages.includes(lang)
+                        ? "bg-teal text-white"
+                        : "bg-gray-100 text-gray hover:bg-gray-200"
+                    }`}
                   >
-                    <div
-                      onClick={() => handleLanguageToggle(lang)}
-                      className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer ${
-                        formData.languages.includes(lang)
-                          ? "border-teal bg-teal"
-                          : "border-gray"
-                      }`}
-                    >
-                      {formData.languages.includes(lang) && (
-                        <svg
-                          className="w-3 h-3 text-white"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                    <span className="font-family-poppins text-sm text-black">
-                      {lang}
-                    </span>
-                  </label>
+                    {formData.languages.includes(lang) && (
+                      <Check size={14} />
+                    )}
+                    {lang}
+                  </button>
                 ))}
               </div>
             </div>
@@ -277,6 +525,168 @@ function EditProfileModal({ isOpen, onClose, user }) {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Skills I Teach */}
+          <div>
+            <label className="font-family-poppins text-sm font-bold text-black block mb-3">
+              Skills I Teach
+            </label>
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={16} />
+              <input
+                type="text"
+                value={teachingSearch}
+                onChange={(e) => setTeachingSearch(e.target.value)}
+                onKeyDown={handleAddTeachingSkill}
+                placeholder="Search skills..."
+                className="w-full max-w-md pl-10 pr-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+              />
+              {/* Suggestions Dropdown */}
+              {teachingSuggestions.length > 0 && (
+                <div className="absolute top-full max-w-md left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                  {teachingSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleTeachingSuggestionClick(suggestion)}
+                      className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {skillsTeaching.map((skill) => (
+                <span
+                  key={skill._id || skill.name}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
+                >
+                  {skill.name}
+                  <button
+                    onClick={() => handleRemoveTeachingSkill(skill._id)}
+                    className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+              {skillsTeaching.length === 0 && (
+                <p className="font-family-poppins text-sm text-gray">
+                  No teaching skills added yet. Search and select or press Enter to add.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Skills I'm Learning */}
+          <div>
+            <label className="font-family-poppins text-sm font-bold text-black block mb-3">
+              Skills I'm Learning
+            </label>
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={16} />
+              <input
+                type="text"
+                value={learningSearch}
+                onChange={(e) => setLearningSearch(e.target.value)}
+                onKeyDown={handleAddLearningSkill}
+                placeholder="Search skills..."
+                className="w-full max-w-md pl-10 pr-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+              />
+              {/* Suggestions Dropdown */}
+              {learningSuggestions.length > 0 && (
+                <div className="absolute  max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                  {learningSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleLearningSuggestionClick(suggestion)}
+                      className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {skillsLearning.map((skill) => (
+                <span
+                  key={skill}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
+                >
+                  {skill}
+                  <button
+                    onClick={() => handleRemoveLearningSkill(skill)}
+                    className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+              {skillsLearning.length === 0 && (
+                <p className="font-family-poppins text-sm text-gray">
+                  No learning goals added yet. Search and select or press Enter to add.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Certifications */}
+          <div>
+            <label className="font-family-poppins text-sm font-bold text-black block mb-3">
+              Certifications
+            </label>
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={16} />
+              <input
+                type="text"
+                value={certificationSearch}
+                onChange={(e) => setCertificationSearch(e.target.value)}
+                onKeyDown={handleAddCertification}
+                placeholder="Search certifications..."
+                className="w-full max-w-md pl-10 pr-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+              />
+              {/* Suggestions Dropdown */}
+              {certSuggestions.length > 0 && (
+                <div className="absolute max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                  {certSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleCertSuggestionClick(suggestion)}
+                      className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {certifications.map((cert) => (
+                <span
+                  key={cert._id || cert.name}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
+                >
+                  {cert.name}
+                  <button
+                    onClick={() => handleRemoveCertification(cert._id)}
+                    className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+              {certifications.length === 0 && (
+                <p className="font-family-poppins text-sm text-gray">
+                  No certifications added yet. Search and select or press Enter to add.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
