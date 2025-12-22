@@ -101,7 +101,7 @@ function TwoFactorPage() {
             <h1 className="font-family-poppins text-3xl font-bold text-black mb-3">
               Authenticate Your Account
             </h1>
-            <p className="font-family-poppins text-sm text-[#575757]">
+            <p className="font-family-poppins text-sm text-gray">
               Protecting your privacy is our top priority. Please confirm your
               account by entering the authorization code sent to your email.
             </p>
@@ -132,7 +132,7 @@ function TwoFactorPage() {
             )}
 
             <div className="flex items-center justify-between mt-4">
-              <p className="font-family-poppins text-sm text-[#575757]">
+              <p className="font-family-poppins text-sm text-gray">
                 It may take a minute to receive your code.
                 <br />
                 Haven't received it?{" "}

@@ -181,7 +181,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
       const filtered = skillSuggestions.filter(
         (skill) =>
           skill.toLowerCase().includes(learningSearch.toLowerCase()) &&
-          !skillsLearning.includes(skill)
+          !skillsLearning.some((s) => s.name?.toLowerCase() === skill.toLowerCase())
       );
       setLearningSuggestions(filtered.slice(0, 6));
     } else {
@@ -270,7 +270,11 @@ function EditProfileModal({ isOpen, onClose, user }) {
     if (e.key === "Enter" && learningSearch.trim()) {
       e.preventDefault();
       const skillName = learningSearch.trim();
-      if (!skillsLearning.includes(skillName)) {
+      if (
+        !skillsLearning.some(
+          (s) => s.name?.toLowerCase() === skillName.toLowerCase()
+        )
+      ) {
         try {
           const updatedSkills = await dispatch(addLearningSkill(skillName)).unwrap();
           setSkillsLearning(updatedSkills);
@@ -283,9 +287,9 @@ function EditProfileModal({ isOpen, onClose, user }) {
     }
   };
 
-  const handleRemoveLearningSkill = async (skillName) => {
+  const handleRemoveLearningSkill = async (skillId) => {
     try {
-      const updatedSkills = await dispatch(removeLearningSkill(skillName)).unwrap();
+      const updatedSkills = await dispatch(removeLearningSkill(skillId)).unwrap();
       setSkillsLearning(updatedSkills);
     } catch (error) {
       console.error("Failed to remove learning skill:", error);
@@ -615,12 +619,12 @@ function EditProfileModal({ isOpen, onClose, user }) {
             <div className="flex flex-wrap gap-2">
               {skillsLearning.map((skill) => (
                 <span
-                  key={skill}
+                  key={skill._id || skill.name}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-teal text-white rounded-full font-family-poppins text-sm"
                 >
-                  {skill}
+                  {skill.name}
                   <button
-                    onClick={() => handleRemoveLearningSkill(skill)}
+                    onClick={() => handleRemoveLearningSkill(skill._id)}
                     className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
                   >
                     <X size={14} />
