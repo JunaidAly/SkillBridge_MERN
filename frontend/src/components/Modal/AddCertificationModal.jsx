@@ -4,7 +4,7 @@ import { X, Loader2, Upload, FileText, Image, Trash2 } from "lucide-react";
 import Button from "../../ui/Button";
 import { addCertification } from "../../store/profileSlice";
 
-function AddCertificationModal({ isOpen, onClose }) {
+function AddCertificationModal({ isOpen, onClose, mode = "add", initialCert = null, onSubmit }) {
   const dispatch = useDispatch();
   const { updateLoading } = useSelector((state) => state.profile);
   const fileInputRef = useRef(null);
@@ -25,7 +25,11 @@ function AddCertificationModal({ isOpen, onClose }) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
-      setFormData({ name: "", issuer: "", year: "" });
+      setFormData({
+        name: initialCert?.name || "",
+        issuer: initialCert?.issuer || "",
+        year: initialCert?.year || "",
+      });
       setFile(null);
       setFilePreview(null);
       setError("");
@@ -92,14 +96,23 @@ function AddCertificationModal({ isOpen, onClose }) {
     }
 
     try {
-      await dispatch(
-        addCertification({
+      if (onSubmit) {
+        await onSubmit({
           name: formData.name.trim(),
           issuer: formData.issuer.trim(),
           year: formData.year,
           file: file,
-        })
-      ).unwrap();
+        });
+      } else {
+        await dispatch(
+          addCertification({
+            name: formData.name.trim(),
+            issuer: formData.issuer.trim(),
+            year: formData.year,
+            file: file,
+          })
+        ).unwrap();
+      }
       handleClose();
     } catch (err) {
       setError(err || "Failed to add certification");
@@ -131,15 +144,15 @@ function AddCertificationModal({ isOpen, onClose }) {
           isClosing ? "modal-content-exit" : "modal-content-enter"
         }`}
       >
-        {/* Header */}
-        <div className="p-6 pb-4 border-b border-[#E5E5E5] flex items-center justify-between">
-          <h2 className="font-family-poppins text-xl font-bold text-black">
-            Add Certification
-          </h2>
-          <button
-            onClick={handleClose}
-            className="p-1 hover:bg-gray-100 rounded-lg transition-all"
-          >
+      {/* Header */}
+      <div className="p-6 pb-4 border-b border-[#E5E5E5] flex items-center justify-between">
+        <h2 className="font-family-poppins text-xl font-bold text-black">
+          {mode === "edit" ? "Edit Certification" : "Add Certification"}
+        </h2>
+        <button
+          onClick={handleClose}
+          className="p-1 hover:bg-gray-100 rounded-lg transition-all"
+        >
             <X className="text-gray" size={24} />
           </button>
         </div>
@@ -282,7 +295,13 @@ function AddCertificationModal({ isOpen, onClose }) {
               disabled={updateLoading}
             >
               {updateLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {updateLoading ? "Adding..." : "Add Certification"}
+              {updateLoading
+                ? mode === "edit"
+                  ? "Saving..."
+                  : "Adding..."
+                : mode === "edit"
+                ? "Save Changes"
+                : "Add Certification"}
             </Button>
           </div>
         </form>

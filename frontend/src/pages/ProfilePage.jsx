@@ -13,6 +13,7 @@ import {
   removeLearningSkill,
   removeCertification,
   updateLearningProgress,
+  addCertification,
 } from "../store/profileSlice";
 
 function ProfilePage() {
@@ -23,6 +24,8 @@ function ProfilePage() {
   const [isAddTeachingSkillOpen, setIsAddTeachingSkillOpen] = useState(false);
   const [isAddLearningSkillOpen, setIsAddLearningSkillOpen] = useState(false);
   const [isAddCertificationOpen, setIsAddCertificationOpen] = useState(false);
+  const [isEditCertificationOpen, setIsEditCertificationOpen] = useState(false);
+  const [editingCert, setEditingCert] = useState(null);
 
   useEffect(() => {
     dispatch(fetchProfile());
@@ -42,6 +45,23 @@ function ProfilePage() {
 
   const handleRemoveCertification = (certId) => {
     dispatch(removeCertification(certId));
+  };
+
+  const handleOpenEditCertification = (cert) => {
+    setEditingCert(cert);
+    setIsEditCertificationOpen(true);
+  };
+
+  const handleSubmitEditCertification = async (data) => {
+    try {
+      await dispatch(addCertification(data)).unwrap();
+      await dispatch(removeCertification(editingCert._id)).unwrap();
+      setIsEditCertificationOpen(false);
+      setEditingCert(null);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to save changes");
+    }
   };
 
   const handleDownloadCertification = async (cert) => {
@@ -383,6 +403,12 @@ function ProfilePage() {
                 >
                   <X className="text-gray" size={18} />
                 </button>
+                <button
+                  onClick={() => handleOpenEditCertification(cert)}
+                  className="p-1 hover:bg-gray-100 rounded shrink-0"
+                >
+                  <Pencil className="text-gray" size={18} />
+                </button>
               </div>
             ))
           ) : (
@@ -417,6 +443,16 @@ function ProfilePage() {
       <AddCertificationModal
         isOpen={isAddCertificationOpen}
         onClose={() => setIsAddCertificationOpen(false)}
+      />
+      <AddCertificationModal
+        isOpen={isEditCertificationOpen}
+        onClose={() => {
+          setIsEditCertificationOpen(false);
+          setEditingCert(null);
+        }}
+        mode="edit"
+        initialCert={editingCert}
+        onSubmit={handleSubmitEditCertification}
       />
     </div>
   );

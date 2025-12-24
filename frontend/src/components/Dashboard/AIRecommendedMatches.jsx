@@ -98,7 +98,7 @@ function AIRecommendedMatches() {
           </span>
         </span>
         <span className="font-family-poppins text-sm text-gray">
-          Based on Skills | Ratings | Learning Style
+          Based on Skills | Ratings | Feedbacks
         </span>
       </div>
 
