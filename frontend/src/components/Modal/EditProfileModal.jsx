@@ -93,6 +93,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
   const dispatch = useDispatch();
   const { updateLoading } = useSelector((state) => state.profile);
   const fileInputRef = useRef(null);
+  const isInitializedRef = useRef(false);
 
   const [isClosing, setIsClosing] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
@@ -130,25 +131,32 @@ function EditProfileModal({ isOpen, onClose, user }) {
     "PKT (GMT+5)",
   ];
 
+  // Initialize form only when modal opens, not when user changes
   useEffect(() => {
-    if (user && isOpen) {
+    if (isOpen && !isInitializedRef.current) {
       setFormData({
-        name: user.name || "",
-        bio: user.bio || "",
-        location: user.location || "",
-        timezone: user.timezone || "",
-        languages: user.languages || [],
+        name: user?.name || "",
+        bio: user?.bio || "",
+        location: user?.location || "",
+        timezone: user?.timezone || "",
+        languages: user?.languages || [],
       });
-      setAvatarPreview(user.avatar || null);
+      setAvatarPreview(user?.avatar || null);
       setAvatarFile(null);
-      setSkillsTeaching(user.skillsTeaching || []);
-      setSkillsLearning(user.skillsLearning || []);
-      setCertifications(user.certifications || []);
+      setSkillsTeaching(user?.skillsTeaching || []);
+      setSkillsLearning(user?.skillsLearning || []);
+      setCertifications(user?.certifications || []);
       setTeachingSearch("");
       setLearningSearch("");
       setCertificationSearch("");
+      isInitializedRef.current = true;
     }
-  }, [user, isOpen]);
+    
+    // Reset initialization flag when modal closes
+    if (!isOpen) {
+      isInitializedRef.current = false;
+    }
+  }, [isOpen, user]);
 
   useEffect(() => {
     if (isOpen) {
@@ -330,8 +338,8 @@ function EditProfileModal({ isOpen, onClose, user }) {
     try {
       const updatedSkills = await dispatch(addTeachingSkill(suggestion)).unwrap();
       setSkillsTeaching(updatedSkills);
-      setTeachingSearch("");
-      setTeachingSuggestions([]);
+      setTeachingSearch(""); // Clear immediately
+      setTeachingSuggestions([]); // Clear suggestions
     } catch (error) {
       console.error("Failed to add teaching skill:", error);
     }
@@ -341,8 +349,8 @@ function EditProfileModal({ isOpen, onClose, user }) {
     try {
       const updatedSkills = await dispatch(addLearningSkill(suggestion)).unwrap();
       setSkillsLearning(updatedSkills);
-      setLearningSearch("");
-      setLearningSuggestions([]);
+      setLearningSearch(""); // Clear immediately
+      setLearningSuggestions([]); // Clear suggestions
     } catch (error) {
       console.error("Failed to add learning skill:", error);
     }
@@ -352,8 +360,8 @@ function EditProfileModal({ isOpen, onClose, user }) {
     try {
       const updatedCerts = await dispatch(addCertification({ name: suggestion })).unwrap();
       setCertifications(updatedCerts);
-      setCertificationSearch("");
-      setCertSuggestions([]);
+      setCertificationSearch(""); // Clear immediately
+      setCertSuggestions([]); // Clear suggestions
     } catch (error) {
       console.error("Failed to add certification:", error);
     }
@@ -553,7 +561,11 @@ function EditProfileModal({ isOpen, onClose, user }) {
                     <button
                       key={suggestion}
                       type="button"
-                      onClick={() => handleTeachingSuggestionClick(suggestion)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleTeachingSuggestionClick(suggestion);
+                      }}
                       className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
                     >
                       {suggestion}
@@ -607,7 +619,11 @@ function EditProfileModal({ isOpen, onClose, user }) {
                     <button
                       key={suggestion}
                       type="button"
-                      onClick={() => handleLearningSuggestionClick(suggestion)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleLearningSuggestionClick(suggestion);
+                      }}
                       className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
                     >
                       {suggestion}
@@ -661,7 +677,11 @@ function EditProfileModal({ isOpen, onClose, user }) {
                     <button
                       key={suggestion}
                       type="button"
-                      onClick={() => handleCertSuggestionClick(suggestion)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCertSuggestionClick(suggestion);
+                      }}
                       className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
                     >
                       {suggestion}
