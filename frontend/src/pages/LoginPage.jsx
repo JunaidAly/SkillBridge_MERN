@@ -244,7 +244,7 @@ function LoginPage() {
               </span>
             </GoogleLoginButton>
 
-            <button
+            {/* <button
               onClick={handleFacebookLogin}
               className="flex items-center justify-center gap-3 w-full py-3 border border-[#D0D0D0] rounded-lg hover:bg-gray-50 transition-all"
             >
@@ -254,7 +254,7 @@ function LoginPage() {
               <span className="font-family-poppins font-medium text-dark-blue">
                 Continue with Facebook
               </span>
-            </button>
+            </button> */}
           </div>
 
           <p className="text-center mt-8 font-family-poppins text-sm text-gray">
