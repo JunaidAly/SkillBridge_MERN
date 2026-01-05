@@ -5,10 +5,12 @@ import Input from "../ui/Input";
 import Button from "../ui/AuthButton";
 import GoogleLoginButton from "../components/GoogleLoginButton";
 import { registerUser, loginWithFacebook, clearError } from "../store/authSlice";
+import { useToast } from "../ui/Toast";
 
 function SignUpPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { showSuccess, showError, showInfo } = useToast();
   const { loading, error, token, verificationEmail } = useSelector((state) => state.auth);
   const [formData, setFormData] = useState({
     name: "",
@@ -18,15 +20,23 @@ function SignUpPage() {
 
   useEffect(() => {
     if (token) {
+      showSuccess("Account created successfully!");
       navigate("/dashboard", { replace: true });
     } else if (verificationEmail) {
+      showInfo("Please verify your email to continue.");
       // Redirect to 2FA page if verification is required
       navigate('/verify', { 
         state: { email: verificationEmail, purpose: 'signup' },
         replace: true 
       });
     }
-  }, [token, verificationEmail, navigate]);
+  }, [token, verificationEmail, navigate, showSuccess, showInfo]);
+
+  useEffect(() => {
+    if (error) {
+      showError(error);
+    }
+  }, [error, showError]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -106,7 +116,7 @@ function SignUpPage() {
     const facebookAppId = import.meta.env.VITE_FACEBOOK_APP_ID?.trim() || '';
     
     if (!facebookAppId) {
-      alert('Facebook OAuth is not configured. Please set VITE_FACEBOOK_APP_ID in your .env file.');
+      showError('Facebook OAuth is not configured. Please set VITE_FACEBOOK_APP_ID in your .env file.');
       return;
     }
 
@@ -114,12 +124,12 @@ function SignUpPage() {
     const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
     if (!isSecure) {
-      alert('Facebook login requires HTTPS. Please use HTTPS or localhost for development.');
+      showError('Facebook login requires HTTPS. Please use HTTPS or localhost for development.');
       return;
     }
 
     if (!window.FB || !fbReady) {
-      alert('Facebook SDK is not ready. Please wait a moment and try again.');
+      showError('Facebook SDK is not ready. Please wait a moment and try again.');
       return;
     }
 
@@ -133,7 +143,7 @@ function SignUpPage() {
               (userInfo) => {
                 if (userInfo.error) {
                   console.error('Facebook API error:', userInfo.error);
-                  alert('Failed to get user information from Facebook.');
+                  showError('Failed to get user information from Facebook.');
                   return;
                 }
                 dispatch(loginWithFacebook({
@@ -147,7 +157,7 @@ function SignUpPage() {
           } else {
             console.error('Facebook login failed:', response);
             if (response.error) {
-              alert(`Facebook login failed: ${response.error.message || 'Unknown error'}`);
+              showError(`Facebook login failed: ${response.error.message || 'Unknown error'}`);
             }
           }
         },
@@ -155,7 +165,7 @@ function SignUpPage() {
       );
     } catch (error) {
       console.error('Facebook login error:', error);
-      alert('An error occurred during Facebook login. Please try again.');
+      showError('An error occurred during Facebook login. Please try again.');
     }
   };
 
@@ -284,11 +294,6 @@ function SignUpPage() {
             </p>
           </div>
 
-          {error && (
-            <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm mb-2">
-              {error}
-            </div>
-          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
               label="Full Name"

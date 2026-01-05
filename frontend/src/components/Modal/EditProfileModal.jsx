@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { X, Camera, Loader2, Search, Check } from "lucide-react";
 import Button from "../../ui/Button";
+import { useToast } from "../../ui/Toast";
 import {
   updateProfile,
   uploadAvatar,
@@ -91,6 +92,7 @@ const certificationSuggestions = [
 
 function EditProfileModal({ isOpen, onClose, user }) {
   const dispatch = useDispatch();
+  const { showSuccess, showError } = useToast();
   const { updateLoading } = useSelector((state) => state.profile);
   const fileInputRef = useRef(null);
   const isInitializedRef = useRef(false);
@@ -256,8 +258,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
         try {
           const updatedSkills = await dispatch(addTeachingSkill(skillName)).unwrap();
           setSkillsTeaching(updatedSkills);
+          showSuccess("Teaching skill added successfully!");
         } catch (error) {
           console.error("Failed to add teaching skill:", error);
+          showError(error.message || "Failed to add teaching skill");
         }
       }
       setTeachingSearch("");
@@ -269,8 +273,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
     try {
       const updatedSkills = await dispatch(removeTeachingSkill(skillId)).unwrap();
       setSkillsTeaching(updatedSkills);
+      showSuccess("Teaching skill removed successfully!");
     } catch (error) {
       console.error("Failed to remove teaching skill:", error);
+      showError(error.message || "Failed to remove teaching skill");
     }
   };
 
@@ -286,8 +292,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
         try {
           const updatedSkills = await dispatch(addLearningSkill(skillName)).unwrap();
           setSkillsLearning(updatedSkills);
+          showSuccess("Learning skill added successfully!");
         } catch (error) {
           console.error("Failed to add learning skill:", error);
+          showError(error.message || "Failed to add learning skill");
         }
       }
       setLearningSearch("");
@@ -299,8 +307,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
     try {
       const updatedSkills = await dispatch(removeLearningSkill(skillId)).unwrap();
       setSkillsLearning(updatedSkills);
+      showSuccess("Learning skill removed successfully!");
     } catch (error) {
       console.error("Failed to remove learning skill:", error);
+      showError(error.message || "Failed to remove learning skill");
     }
   };
 
@@ -315,8 +325,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
         try {
           const updatedCerts = await dispatch(addCertification({ name: certName })).unwrap();
           setCertifications(updatedCerts);
+          showSuccess("Certification added successfully!");
         } catch (error) {
           console.error("Failed to add certification:", error);
+          showError(error.message || "Failed to add certification");
         }
       }
       setCertificationSearch("");
@@ -328,8 +340,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
     try {
       const updatedCerts = await dispatch(removeCertification(certId)).unwrap();
       setCertifications(updatedCerts);
+      showSuccess("Certification removed successfully!");
     } catch (error) {
       console.error("Failed to remove certification:", error);
+      showError(error.message || "Failed to remove certification");
     }
   };
 
@@ -340,8 +354,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
       setSkillsTeaching(updatedSkills);
       setTeachingSearch(""); // Clear immediately
       setTeachingSuggestions([]); // Clear suggestions
+      showSuccess("Teaching skill added successfully!");
     } catch (error) {
       console.error("Failed to add teaching skill:", error);
+      showError(error.message || "Failed to add teaching skill");
     }
   };
 
@@ -351,8 +367,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
       setSkillsLearning(updatedSkills);
       setLearningSearch(""); // Clear immediately
       setLearningSuggestions([]); // Clear suggestions
+      showSuccess("Learning skill added successfully!");
     } catch (error) {
       console.error("Failed to add learning skill:", error);
+      showError(error.message || "Failed to add learning skill");
     }
   };
 
@@ -362,8 +380,10 @@ function EditProfileModal({ isOpen, onClose, user }) {
       setCertifications(updatedCerts);
       setCertificationSearch(""); // Clear immediately
       setCertSuggestions([]); // Clear suggestions
+      showSuccess("Certification added successfully!");
     } catch (error) {
       console.error("Failed to add certification:", error);
+      showError(error.message || "Failed to add certification");
     }
   };
 
@@ -372,13 +392,16 @@ function EditProfileModal({ isOpen, onClose, user }) {
       // Upload avatar if changed
       if (avatarFile) {
         await dispatch(uploadAvatar(avatarFile)).unwrap();
+        showSuccess("Avatar updated successfully!");
       }
 
       // Update profile data
       await dispatch(updateProfile(formData)).unwrap();
+      showSuccess("Profile updated successfully!");
       handleClose();
     } catch (error) {
       console.error("Failed to update profile:", error);
+      showError(error.message || "Failed to update profile");
     }
   };
 

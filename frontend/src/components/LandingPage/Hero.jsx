@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import Button from "../../ui/Button";
 
 function Hero() {
@@ -15,12 +16,14 @@ function Hero() {
             learn what you love, powered by intelligent AI matching and fair
             credit system.
           </p>
-          <Button
-            variant="herobtn"
-            className="px-8 py-3 text-lg font-family-josefin font-semibold"
-          >
-            Start Learning Free
-          </Button>
+          <Link to="/signup">
+            <Button
+              variant="herobtn"
+              className="px-8 py-3 text-lg font-family-josefin font-semibold"
+            >
+              Start Learning Free
+            </Button>
+          </Link>
         </div>
 
         {/* Right Image */}

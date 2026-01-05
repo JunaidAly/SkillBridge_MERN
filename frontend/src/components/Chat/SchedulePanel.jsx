@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Wallet } from "lucide-react";
 import Button from "../../ui/Button";
+import { useToast } from "../../ui/Toast";
 import { useDispatch, useSelector } from "react-redux";
 import { createMeeting, fetchMeetings } from "../../store/meetingsSlice";
 import { fetchWallet, earnTeachingCredits, spendLearningCredits } from "../../store/creditsSlice";
@@ -15,6 +16,7 @@ function SchedulePanel({ selectedChat }) {
   const [selectedSkill, setSelectedSkill] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const dispatch = useDispatch();
+  const toast = useToast();
   const { meetings } = useSelector((s) => s.meetings);
   const { wallet } = useSelector((s) => s.credits);
   const { profile } = useSelector((s) => s.profile);
@@ -31,7 +33,7 @@ function SchedulePanel({ selectedChat }) {
     if (sessionRole === "teaching") {
       return (profile.skillsTeaching || []).map((s) => s.name);
     } else {
-      return profile.skillsLearning || [];
+      return (profile.skillsLearning || []).map((s) => typeof s === 'string' ? s : s.name);
     }
   }, [profile, sessionRole]);
 
@@ -58,13 +60,13 @@ function SchedulePanel({ selectedChat }) {
 
   const handlePropose = async () => {
     if (!selectedChat?.otherUserId) {
-      alert("Select a chat first to propose a session.");
+      toast.warning("Select a chat first to propose a session.");
       return;
     }
 
     // Check balance if learning
     if (sessionRole === "learning" && (!wallet || wallet.balance < 25)) {
-      alert("Insufficient credits. You need 25 credits to schedule a learning session.");
+      toast.error("Insufficient credits. You need 25 credits to schedule a learning session.");
       return;
     }
 
@@ -107,8 +109,9 @@ function SchedulePanel({ selectedChat }) {
       // Refresh wallet and profile (for updated stats)
       dispatch(fetchWallet());
       dispatch(fetchProfile());
+      toast.success("Session scheduled successfully!");
     } catch (err) {
-      alert(err || "Failed to schedule session");
+      toast.error(err || "Failed to schedule session");
     } finally {
       setIsSubmitting(false);
     }

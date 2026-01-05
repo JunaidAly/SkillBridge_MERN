@@ -38,9 +38,11 @@ function Header() {
                 Sign In
               </Button>
             </Link>
-            <Button variant="primary">
-              Get Started
-            </Button>
+            <Link to="/signup">
+              <Button variant="primary">
+                Get Started
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import Button from '../../ui/Button.jsx';
 import { ArrowRight } from 'lucide-react';
 
@@ -12,13 +13,15 @@ function CTA() {
           <p className="text-lg font-medium text-white/90 max-w-2xl mb-8">
             Join SkillBridge today and connect with global community of learners and mentors.
           </p>
-          <Button
-            variant="primary"
-            className="px-8 py-3 text-lg font-medium flex items-center gap-2"
-          >
-            Create Free Account
-            <ArrowRight className="w-5 h-5" />
-          </Button>
+          <Link to="/signup">
+            <Button
+              variant="primary"
+              className="px-8 py-3 text-lg font-medium flex items-center gap-2"
+            >
+              Create Free Account
+              <ArrowRight className="w-5 h-5" />
+            </Button>
+          </Link>
         </div>
       </div>
     </section>
