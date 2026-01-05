@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI app
 app = FastAPI(
     title="SkillBridge AI Recommendation Service",
-    description="Hybrid teacher recommendation system using collaborative and content-based filtering",
+    description="Content-based teacher recommendation system matching students with teachers based on skills and expertise",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -116,7 +116,6 @@ async def health_check():
         db_connected = False
     
     models_loaded = {
-        "collaborative": recommendation_engine.collaborative_engine.is_trained,
         "content_based": recommendation_engine.content_based_engine.is_trained
     }
     
@@ -194,7 +193,6 @@ async def train_models(
             training_stats={
                 "ratings_count": len(ratings_data),
                 "teachers_count": len(teachers_data),
-                "collaborative_trained": results.get('collaborative', False),
                 "content_based_trained": results.get('content_based', False)
             }
         )
@@ -217,9 +215,8 @@ async def get_recommendations(
     """
     Get personalized teacher recommendations for a student
     
-    Uses hybrid approach:
-    - If student has >= 3 ratings: Collaborative + Content-Based (weighted)
-    - If student has < 3 ratings: Content-Based only (cold start)
+    Uses content-based filtering to match student interests and learning goals
+    with teacher skills and expertise using TF-IDF and cosine similarity.
     
     Args:
         request: RecommendationRequest with student_id and limit
@@ -230,12 +227,11 @@ async def get_recommendations(
     try:
         logger.info(f"📍 Recommendation request for student: {request.student_id}")
         
-        # Check if any model is trained
-        if not recommendation_engine.collaborative_engine.is_trained and \
-           not recommendation_engine.content_based_engine.is_trained:
+        # Check if model is trained
+        if not recommendation_engine.content_based_engine.is_trained:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Models not trained yet. Please call /train endpoint first."
+                detail="Model not trained yet. Please call /train endpoint first."
             )
         
         # Fetch student data
