@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Star, Loader2 } from "lucide-react";
+import { Star, Loader2, RefreshCw } from "lucide-react";
 import Button from "../ui/Button";
+import { useToast } from "../ui/Toast";
 import {
   fetchFeedbackReceived,
   fetchFeedbackGiven,
@@ -12,6 +13,7 @@ import {
 
 function FeedbackPage() {
   const dispatch = useDispatch();
+  const { showSuccess, showError, showInfo } = useToast();
   const { feedbackReceived, feedbackGiven, pendingSessions, loading, submitting, error } =
     useSelector((state) => state.feedback);
 
@@ -20,28 +22,64 @@ function FeedbackPage() {
   const [feedbackText, setFeedbackText] = useState("");
   const [activeTab, setActiveTab] = useState("received");
   const [selectedSession, setSelectedSession] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        dispatch(fetchFeedbackReceived()).unwrap(),
+        dispatch(fetchFeedbackGiven()).unwrap(),
+        dispatch(fetchPendingSessions()).unwrap(),
+      ]);
+      showSuccess("Feedback data refreshed!");
+    } catch (err) {
+      console.error("Failed to refresh:", err);
+      showError("Failed to refresh data");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    dispatch(fetchFeedbackReceived());
-    dispatch(fetchFeedbackGiven());
-    dispatch(fetchPendingSessions());
-  }, [dispatch]);
+    const loadFeedbackData = async () => {
+      try {
+        const results = await Promise.all([
+          dispatch(fetchFeedbackReceived()).unwrap(),
+          dispatch(fetchFeedbackGiven()).unwrap(),
+          dispatch(fetchPendingSessions()).unwrap(),
+        ]);
+        
+        // Log for debugging
+        console.log("Pending sessions loaded:", results[2]);
+        
+        if (results[2] && results[2].length === 0) {
+          showInfo("No completed sessions found. Complete a session to provide feedback.");
+        }
+      } catch (err) {
+        console.error("Failed to load feedback data:", err);
+        showError("Failed to load feedback data. Please refresh the page.");
+      }
+    };
+    loadFeedbackData();
+  }, [dispatch, showError, showInfo]);
 
   // Auto-select first pending session if available
   useEffect(() => {
     if (pendingSessions.length > 0 && !selectedSession) {
       setSelectedSession(pendingSessions[0]);
+      showInfo(`You have ${pendingSessions.length} session${pendingSessions.length > 1 ? 's' : ''} waiting for feedback.`);
     }
-  }, [pendingSessions, selectedSession]);
+  }, [pendingSessions, selectedSession, showInfo]);
 
   const handleSubmit = async () => {
     if (!selectedSession) {
-      alert("Please select a session to provide feedback for");
+      showError("Please select a session to provide feedback for");
       return;
     }
 
     if (!rating || rating < 1 || rating > 5) {
-      alert("Please select a rating");
+      showError("Please select a rating between 1 and 5");
       return;
     }
 
@@ -66,9 +104,9 @@ function FeedbackPage() {
       dispatch(fetchFeedbackGiven());
       dispatch(fetchPendingSessions());
       
-      alert("Feedback submitted successfully!");
+      showSuccess("Feedback submitted successfully!");
     } catch (err) {
-      alert(err || "Failed to submit feedback");
+      showError(err || "Failed to submit feedback");
     }
   };
 
@@ -82,9 +120,19 @@ function FeedbackPage() {
   return (
     <div className="max-w-7xl">
       {/* Header */}
-      <h1 className="font-family-poppins text-2xl font-bold text-black mb-6">
-        Feedback & Ratings
-      </h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-family-poppins text-2xl font-bold text-black">
+          Feedback & Ratings
+        </h1>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal border border-teal rounded-lg hover:bg-teal hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
 
       {/* Feedback Card */}
       {pendingSessions.length > 0 ? (
@@ -210,17 +258,17 @@ function FeedbackPage() {
             {submitting ? "Submitting..." : "Submit Feedback"}
           </Button>
         </div>
-        {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="font-family-poppins text-sm text-red-600">{error}</p>
-          </div>
-        )}
       </div>
       ) : (
         <div className="bg-white rounded-xl p-6 shadow-sm">
-          <p className="font-family-poppins text-gray text-center py-8">
-            No pending sessions to provide feedback for.
-          </p>
+          <div className="text-center py-8">
+            <p className="font-family-poppins text-gray mb-2">
+              No completed sessions found.
+            </p>
+            <p className="font-family-poppins text-sm text-gray-400">
+              Sessions that have ended will appear here for you to provide feedback.
+            </p>
+          </div>
         </div>
       )}
 

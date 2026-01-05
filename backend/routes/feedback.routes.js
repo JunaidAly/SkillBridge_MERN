@@ -72,14 +72,19 @@ router.get('/pending', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const now = new Date();
 
-    // Get meetings where user is a participant and meeting has passed
-    const pastMeetings = await Meeting.find({
+    // Get meetings where user is a participant
+    const allMeetings = await Meeting.find({
       participants: userId,
-      startsAt: { $lt: now },
     })
       .populate('participants', 'name email avatar')
       .sort({ startsAt: -1 })
       .limit(50);
+
+    // Filter meetings that have ended (startsAt + duration has passed)
+    const pastMeetings = allMeetings.filter((m) => {
+      const meetingEndTime = new Date(m.startsAt.getTime() + (m.duration || 60) * 60 * 1000);
+      return meetingEndTime < now;
+    });
 
     // Get feedback already given by this user
     const givenFeedback = await Feedback.find({ fromUser: userId }).select('meeting');

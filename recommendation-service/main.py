@@ -1,0 +1,314 @@
+"""
+FastAPI Application - AI Teacher Recommendation Service
+"""
+from fastapi import FastAPI, HTTPException, Depends, status, Header
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+import logging
+from datetime import datetime
+from typing import Optional
+
+from config import settings
+from database import db
+from models import (
+    RecommendationRequest,
+    RecommendationResponse,
+    TrainRequest,
+    TrainResponse,
+    HealthResponse
+)
+from recommendation_engine import recommendation_engine
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# Lifespan context manager for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events"""
+    try:
+        # Startup
+        logger.info("🚀 Starting AI Recommendation Service...")
+        
+        # Connect to MongoDB
+        await db.connect()
+        
+        # Try to load existing models
+        logger.info("Loading existing models...")
+        models_loaded = recommendation_engine.load_models()
+        
+        if not any(models_loaded.values()):
+            logger.warning("⚠️  No pre-trained models found. Please call /train endpoint first.")
+        else:
+            logger.info(f"✅ Models loaded: {models_loaded}")
+        
+        logger.info(f"✅ Service ready on port {settings.service_port}")
+        
+        yield
+        
+    except Exception as e:
+        logger.error(f"❌ Lifespan error: {e}", exc_info=True)
+        raise
+    finally:
+        # Shutdown
+        logger.info("Shutting down...")
+        try:
+            await db.disconnect()
+        except:
+            pass
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="SkillBridge AI Recommendation Service",
+    description="Hybrid teacher recommendation system using collaborative and content-based filtering",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Security: Simple API key validation
+async def verify_api_key(x_api_key: Optional[str] = Header(None)):
+    """Verify API key from header"""
+    if settings.environment == "production":
+        if not x_api_key or x_api_key != settings.api_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API key"
+            )
+    return x_api_key
+
+
+@app.get("/", tags=["Root"])
+async def root():
+    """Root endpoint"""
+    return {
+        "service": "SkillBridge AI Recommendation Service",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs"
+    }
+
+
+@app.get("/health", response_model=HealthResponse, tags=["Health"])
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Check database connection
+        await db.client.admin.command('ping')
+        db_connected = True
+    except:
+        db_connected = False
+    
+    models_loaded = {
+        "collaborative": recommendation_engine.collaborative_engine.is_trained,
+        "content_based": recommendation_engine.content_based_engine.is_trained
+    }
+    
+    return HealthResponse(
+        status="healthy" if db_connected and any(models_loaded.values()) else "degraded",
+        service="recommendation-service",
+        version="1.0.0",
+        models_loaded=models_loaded,
+        database_connected=db_connected
+    )
+
+
+@app.post("/train", response_model=TrainResponse, tags=["Training"])
+async def train_models(
+    request: TrainRequest,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Train or retrain both collaborative and content-based models
+    
+    This endpoint should be called:
+    - Initially to train models
+    - Periodically (e.g., daily/weekly) to update with new data
+    - After significant new ratings are added
+    
+    Args:
+        request: TrainRequest with force_retrain flag
+        
+    Returns:
+        TrainResponse with training status
+    """
+    try:
+        logger.info("=" * 60)
+        logger.info("🎓 TRAINING REQUEST RECEIVED")
+        logger.info("=" * 60)
+        
+        # Fetch data from MongoDB
+        logger.info("📊 Fetching data from MongoDB...")
+        ratings_data = await db.get_all_ratings()
+        teachers_data = await db.get_all_teachers()
+        
+        logger.info(f"   Ratings: {len(ratings_data)}")
+        logger.info(f"   Teachers: {len(teachers_data)}")
+        
+        if not ratings_data and not teachers_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No data available for training. Please ensure ratings and teachers exist in database."
+            )
+        
+        # Train models
+        results = await recommendation_engine.train(ratings_data, teachers_data)
+        
+        models_trained = [k for k, v in results.items() if v]
+        
+        if not models_trained:
+            return TrainResponse(
+                success=False,
+                message="Training failed for all models. Check logs for details.",
+                models_trained=[],
+                training_stats={
+                    "ratings_count": len(ratings_data),
+                    "teachers_count": len(teachers_data)
+                }
+            )
+        
+        logger.info("=" * 60)
+        logger.info("✅ TRAINING COMPLETED SUCCESSFULLY")
+        logger.info("=" * 60)
+        
+        return TrainResponse(
+            success=True,
+            message=f"Successfully trained {len(models_trained)} model(s)",
+            models_trained=models_trained,
+            training_stats={
+                "ratings_count": len(ratings_data),
+                "teachers_count": len(teachers_data),
+                "collaborative_trained": results.get('collaborative', False),
+                "content_based_trained": results.get('content_based', False)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Training error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Training failed: {str(e)}"
+        )
+
+
+@app.post("/recommend", response_model=RecommendationResponse, tags=["Recommendations"])
+async def get_recommendations(
+    request: RecommendationRequest,
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Get personalized teacher recommendations for a student
+    
+    Uses hybrid approach:
+    - If student has >= 3 ratings: Collaborative + Content-Based (weighted)
+    - If student has < 3 ratings: Content-Based only (cold start)
+    
+    Args:
+        request: RecommendationRequest with student_id and limit
+        
+    Returns:
+        RecommendationResponse with list of recommended teachers
+    """
+    try:
+        logger.info(f"📍 Recommendation request for student: {request.student_id}")
+        
+        # Check if any model is trained
+        if not recommendation_engine.collaborative_engine.is_trained and \
+           not recommendation_engine.content_based_engine.is_trained:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Models not trained yet. Please call /train endpoint first."
+            )
+        
+        # Fetch student data
+        student_data = await db.get_student_by_id(request.student_id)
+        
+        if not student_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Student with ID {request.student_id} not found"
+            )
+        
+        # Get student's existing ratings to exclude already-rated teachers
+        student_ratings = await db.get_student_ratings(request.student_id)
+        excluded_teacher_ids = [str(r.get('teacherId', '')) for r in student_ratings]
+        
+        # Generate recommendations
+        recommendations = await recommendation_engine.get_recommendations(
+            student_id=request.student_id,
+            student_data=student_data,
+            limit=request.limit,
+            excluded_teacher_ids=excluded_teacher_ids
+        )
+        
+        if not recommendations:
+            logger.warning(f"No recommendations generated for student {request.student_id}")
+            return RecommendationResponse(
+                recommendations=[],
+                student_id=request.student_id,
+                method="none",
+                generated_at=datetime.utcnow()
+            )
+        
+        # Determine method used
+        method = "hybrid"
+        if not recommendation_engine.collaborative_engine.is_trained:
+            method = "content-based"
+        elif not recommendation_engine.content_based_engine.is_trained:
+            method = "collaborative"
+        
+        logger.info(f"✅ Returning {len(recommendations)} recommendations")
+        
+        return RecommendationResponse(
+            recommendations=recommendations,
+            student_id=request.student_id,
+            method=method,
+            generated_at=datetime.utcnow()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Recommendation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate recommendations: {str(e)}"
+        )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Global exception handler"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error occurred"}
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host=settings.service_host,
+        port=settings.service_port,
+        reload=settings.environment == "development"
+    )
