@@ -264,12 +264,8 @@ async def get_recommendations(
                 generated_at=datetime.utcnow()
             )
         
-        # Determine method used
-        method = "hybrid"
-        if not recommendation_engine.collaborative_engine.is_trained:
-            method = "content-based"
-        elif not recommendation_engine.content_based_engine.is_trained:
-            method = "collaborative"
+        # Content-based filtering only
+        method = "content-based"
         
         logger.info(f"✅ Returning {len(recommendations)} recommendations")
         

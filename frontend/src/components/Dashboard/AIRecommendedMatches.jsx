@@ -39,8 +39,11 @@ function AIRecommendedMatches() {
     dispatch(fetchUsers());
   }, [dispatch]);
 
-  // Filter users based on search query
+  // Filter users based on search query and exclude admin users
   const filteredUsers = users.filter((user) => {
+    // Exclude admin users
+    if (user.role === 'admin') return false;
+    
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     const name = user.name?.toLowerCase() || "";

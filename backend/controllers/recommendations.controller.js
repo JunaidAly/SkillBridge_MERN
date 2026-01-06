@@ -1,4 +1,5 @@
 import axios from 'axios';
+import User from '../models/User.js';
 
 const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:8001';
 const RECOMMENDATION_SERVICE_API_KEY = process.env.RECOMMENDATION_SERVICE_API_KEY || 'your-secret-api-key-here';
@@ -10,18 +11,35 @@ const RECOMMENDATION_SERVICE_API_KEY = process.env.RECOMMENDATION_SERVICE_API_KE
  */
 export const getMyRecommendations = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    // JWT contains { userId: ... } not { id: ... }
+    const userId = req.user.userId || req.user.id || req.user._id;
     const limit = parseInt(req.query.limit) || 10;
+    
+    console.log('🔍 req.user:', req.user);
+    console.log('🔍 Extracted userId:', userId);
 
-    // Validate user is a student
-    if (req.user.role !== 'student') {
+    // Fetch full user data from database (JWT doesn't have skillsLearning)
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log('❌ User not found in database for ID:', userId);
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    console.log('✅ User found:', user.name);
+
+    // Validate user has learning skills (is a student/learner)
+    if (!user.skillsLearning || user.skillsLearning.length === 0) {
       return res.status(403).json({
         success: false,
-        message: 'Only students can get recommendations'
+        message: 'Only users with learning skills can get recommendations. Please add skills you want to learn in your profile.'
       });
     }
 
     // Call Python recommendation service
+    console.log('🔍 Requesting recommendations for user:', userId);
     const response = await axios.post(
       `${RECOMMENDATION_SERVICE_URL}/recommend`,
       {
@@ -37,6 +55,8 @@ export const getMyRecommendations = async (req, res) => {
       }
     );
 
+    console.log('📡 Python service response:', JSON.stringify(response.data, null, 2));
+
     // Return recommendations
     res.status(200).json({
       success: true,
@@ -44,7 +64,11 @@ export const getMyRecommendations = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting recommendations:', error.message);
+    console.error('❌ Error getting recommendations:', error.message);
+    if (error.response) {
+      console.error('❌ Python service error status:', error.response.status);
+      console.error('❌ Python service error data:', error.response.data);
+    }
 
     // Handle specific errors
     if (error.response) {
@@ -75,7 +99,7 @@ export const getMyRecommendations = async (req, res) => {
     if (error.code === 'ECONNREFUSED') {
       return res.status(503).json({
         success: false,
-        message: 'Recommendation service is unavailable. Please try again later.'
+        message: 'AI recommendation system is currently offline. Our team is working on it. Please check back later.'
       });
     }
 

@@ -6,7 +6,7 @@ export const fetchRecommendations = createAsyncThunk(
   'recommendations/fetchRecommendations',
   async ({ limit = 10 }, { rejectWithValue }) => {
     try {
-      const response = await client.get(`/api/recommendations/me?limit=${limit}`);
+      const response = await client.get(`/recommendations/me?limit=${limit}`);
       return response.data.data;
     } catch (error) {
       return rejectWithValue(
@@ -48,6 +48,8 @@ const recommendationsSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
         state.recommendations = [];
+        state.method = null;
+        state.generatedAt = null;
       });
   },
 });

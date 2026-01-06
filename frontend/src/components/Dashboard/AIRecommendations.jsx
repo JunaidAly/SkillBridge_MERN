@@ -1,29 +1,56 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Star, Monitor, Brain, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe } from "lucide-react";
 import Button from "../../ui/Button";
 import { createConversation } from "../../store/chatSlice";
 import { fetchRecommendations } from "../../store/recommendationsSlice";
+import { fetchUsers } from "../../store/usersSlice";
 
 function AIRecommendations() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   
   const { user } = useSelector((state) => state.auth);
+  const { profile } = useSelector((state) => state.profile);
   const { loading: chatLoading } = useSelector((state) => state.chat);
   const { recommendations, loading, error, method } = useSelector((state) => state.recommendations);
+  const { users } = useSelector((state) => state.users);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Create a map of teacher data for quick lookup
+  const teacherMap = users.reduce((acc, user) => {
+    acc[user.id || user._id] = user;
+    return acc;
+  }, {});
+
+  // Sort recommendations by match score (highest first)
+  const sortedRecommendations = [...recommendations].sort((a, b) => b.score - a.score);
+
+  // Filter recommendations based on search query and exclude current user
+  const filteredRecommendations = sortedRecommendations.filter((teacher) => {
+    // Exclude current logged-in user
+    if (teacher.teacher_id === user?.userId || teacher.teacher_id === user?.id) {
+      return false;
+    }
+    
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const name = teacher.name?.toLowerCase() || "";
+    const skills = teacher.subjects?.join(" ").toLowerCase() || "";
+    const expertise = teacher.expertise?.join(" ").toLowerCase() || "";
+    return name.includes(query) || skills.includes(query) || expertise.includes(query);
+  });
 
   useEffect(() => {
-    // Only fetch if user is a student
-    if (user?.role === 'student') {
+    // Fetch all users for teacher details
+    dispatch(fetchUsers());
+    
+    // Only fetch if user has skills they want to learn (is a learner/student)
+    if (profile?.skillsLearning && profile.skillsLearning.length > 0) {
       dispatch(fetchRecommendations({ limit: 10 }));
     }
-  }, [dispatch, user]);
-
-  const handleRefresh = () => {
-    dispatch(fetchRecommendations({ limit: 10 }));
-  };
+  }, [dispatch, profile]);
 
   const handleMessage = async (teacherId) => {
     try {
@@ -35,201 +62,203 @@ function AIRecommendations() {
     }
   };
 
-  // Don't show for non-students
-  if (user?.role !== 'student') {
+  // Don't show for users without learning skills
+  if (!profile || !profile.skillsLearning || profile.skillsLearning.length === 0) {
     return null;
   }
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 mb-6">
         <div className="flex items-center gap-2">
-          <Sparkles className="text-purple-600" size={24} />
+          <Sparkles className="text-black" size={20} />
           <h2 className="font-family-poppins text-xl font-semibold text-black">
-            AI-Powered Recommendations
+            AI Recommended Matches
           </h2>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={loading}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-          title="Refresh recommendations"
-        >
-          <RefreshCw className={`w-5 h-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+      </div>
+
+      {/* Search and Filter */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={18} />
+          <input
+            type="text"
+            placeholder="Search by skill or name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal transition-all"
+          />
+        </div>
+        <button className="px-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-josefin font-bold text-sm text-gray hover:bg-gray-50 transition-all">
+          Highly Rated
         </button>
       </div>
 
-      {/* Method Badge */}
-      {method && (
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg">
-          <Brain className="text-purple-600" size={16} />
-          <span className="font-family-poppins text-sm text-gray-700">
-            {method === 'hybrid' && 'Using AI Hybrid Model (Collaborative + Content-Based)'}
-            {method === 'collaborative' && 'Based on Similar Students\' Choices'}
-            {method === 'content-based' && 'Based on Your Learning Interests'}
+      {/* AI Match Score Badge */}
+      <div className="flex items-center gap-2 mb-6 px-2 py-3 border border-teal bg-light-teal rounded-full">
+        <span className="flex items-center gap-1.5 px-3 py-1.5 ">
+          <Brain className="text-teal" size={14} />
+          <span className="font-family-poppins text-sm font-medium text-black">
+            AI Match Score
           </span>
-        </div>
-      )}
+        </span>
+        <span className="font-family-poppins text-sm text-gray">
+          {method === 'content-based' && 'Based on Skills | Ratings | Feedbacks'}
+          {method === 'collaborative' && 'Based on Similar Students'}
+          {method === 'hybrid' && 'Based on Skills & Similar Students'}
+        </span>
+      </div>
 
       {/* Loading State */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-2" />
-            <p className="font-family-poppins text-sm text-gray-600">
-              Finding the best teachers for you...
-            </p>
-          </div>
+          <Loader2 className="w-6 h-6 animate-spin text-teal" />
         </div>
       )}
 
       {/* Error State */}
       {error && !loading && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
-          <div>
-            <p className="font-family-poppins text-sm font-medium text-red-800">
-              Unable to load recommendations
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+          <div className="flex-1">
+            <p className="font-family-poppins text-sm font-medium text-amber-900">
+              AI Recommendations Temporarily Unavailable
             </p>
-            <p className="font-family-poppins text-sm text-red-600 mt-1">
+            <p className="font-family-poppins text-sm text-amber-700 mt-1">
               {error}
             </p>
-            <button
-              onClick={handleRefresh}
-              className="mt-2 text-sm text-red-700 underline hover:text-red-800"
-            >
-              Try again
-            </button>
+            <p className="font-family-poppins text-sm text-amber-600 mt-2">
+              💡 In the meantime, you can browse teachers manually or contact support.
+            </p>
           </div>
         </div>
       )}
 
       {/* Empty State */}
-      {!loading && !error && recommendations.length === 0 && (
+      {!loading && !error && filteredRecommendations.length === 0 && (
         <div className="text-center py-12">
-          <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="font-family-poppins text-gray-600">
-            No recommendations available at the moment.
-          </p>
-          <p className="font-family-poppins text-sm text-gray-500 mt-1">
-            Complete your profile to get personalized teacher recommendations.
+          <p className="font-family-poppins text-gray">
+            {searchQuery ? "No teachers found matching your search." : "No recommendations available yet."}
           </p>
         </div>
       )}
 
-      {/* Recommendations List */}
-      {!loading && !error && recommendations.length > 0 && (
+      {/* Match Cards */}
+      {!loading && !error && filteredRecommendations.length > 0 && (
         <div className="space-y-4">
-          {recommendations.map((teacher, index) => (
-            <div
-              key={teacher.teacher_id}
-              className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start gap-4">
-                {/* Rank Badge */}
-                <div className="shrink-0">
-                  <div className="w-10 h-10 bg-linear-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <span className="font-family-poppins text-white font-bold text-sm">
-                      #{index + 1}
-                    </span>
-                  </div>
-                </div>
+          {filteredRecommendations.map((teacher) => {
+            // Get full teacher data from users store
+            const teacherData = teacherMap[teacher.teacher_id];
+            
+            // Get primary skill being taught
+            const primarySkill = teacher.subjects?.[0] || teacher.expertise?.[0] || "Available for Teaching";
 
-                <div className="flex-1 min-w-0">
-                  {/* Teacher Info */}
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-family-poppins text-lg font-semibold text-black truncate">
-                        {teacher.name}
-                      </h3>
-                      {teacher.subjects && teacher.subjects.length > 0 && (
-                        <p className="font-family-poppins text-sm text-gray-600 truncate">
-                          {teacher.subjects.slice(0, 3).join(', ')}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Match Score */}
-                    <div className="shrink-0 text-right">
-                      <div className="flex items-center gap-1 text-purple-600">
-                        <Brain size={16} />
-                        <span className="font-family-poppins text-sm font-bold">
-                          {Math.round(teacher.score)}%
-                        </span>
-                      </div>
-                      <p className="font-family-poppins text-xs text-gray-500">
-                        Match
-                      </p>
-                    </div>
+            return (
+              <div
+                key={teacher.teacher_id}
+                className="border border-[#E5E5E5] rounded-xl p-5"
+              >
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Avatar */}
+                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                    {teacherData?.avatar ? (
+                      <img
+                        src={teacherData.avatar}
+                        alt={teacher.name}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-gray text-xl font-medium">
+                        {teacher.name?.charAt(0) || 'T'}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Reason */}
-                  {teacher.reason && (
-                    <p className="font-family-poppins text-sm text-gray-600 italic mb-3">
-                      {teacher.reason}
+                  {/* Info */}
+                  <div className="flex-1">
+                    <h3 className="font-family-poppins text-lg font-semibold text-black">
+                      {teacher.name}
+                    </h3>
+                    <p className="font-family-poppins text-sm text-gray mb-2">
+                      {primarySkill}
                     </p>
-                  )}
+                    {/* Stats */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                      
+                      {/* AI Match Score */}
+                      <span className="flex items-center gap-1">
+                        <Brain className="text-teal" size={14} />
+                        <span className="font-family-poppins text-teal font-medium">
+                          {Math.round(teacher.score)}% Match
+                        </span>
+                      </span>
 
-                  {/* Stats */}
-                  <div className="flex flex-wrap items-center gap-4 text-sm mb-4">
-                    {teacher.average_rating > 0 && (
+                      {/* Sessions Taught */}
+                      <span className="flex items-center gap-1">
+                        <Monitor className="text-gray" size={14} />
+                        <span className="font-family-poppins text-gray">
+                          {teacherData?.stats?.sessionsTaught || 0} Sessions Taught
+                        </span>
+                      </span>
+
+                      {/* Location */}
+                      {teacherData?.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="text-gray" size={14} />
+                          <span className="font-family-poppins text-gray">{teacherData.location}</span>
+                        </span>
+                      )}
+
+                      {/* Timezone */}
+                      {teacherData?.timezone && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="text-gray" size={14} />
+                          <span className="font-family-poppins text-gray">{teacherData.timezone}</span>
+                        </span>
+                      )}
+
+                      {/* Rating */}
                       <span className="flex items-center gap-1">
                         <Star className="text-yellow-500 fill-yellow-500" size={14} />
-                        <span className="font-family-poppins text-gray-700 font-medium">
-                          {teacher.average_rating.toFixed(1)}
+                        <span className="font-family-poppins text-gray">
+                          {teacher.average_rating > 0 ? teacher.average_rating.toFixed(1) : "New"}
                         </span>
                       </span>
-                    )}
 
-                    {teacher.years_of_experience > 0 && (
-                      <span className="flex items-center gap-1">
-                        <Monitor className="text-gray-500" size={14} />
-                        <span className="font-family-poppins text-gray-600">
-                          {teacher.years_of_experience} years exp.
-                        </span>
-                      </span>
-                    )}
+                    </div>
 
-                    {teacher.expertise && teacher.expertise.length > 0 && (
-                      <span className="font-family-poppins text-gray-600">
-                        {teacher.expertise.slice(0, 2).join(', ')}
-                      </span>
+                    {/* Reason */}
+                    {teacher.reason && (
+                      <p className="font-family-poppins text-xs text-gray-500 italic mt-2">
+                        {teacher.reason}
+                      </p>
                     )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      className="flex-1 py-2"
-                      onClick={() => navigate(`/profile/${teacher.teacher_id}`)}
-                    >
-                      View Profile
-                    </Button>
-                    <Button
-                      variant="primary"
-                      className="flex-1 py-2"
-                      onClick={() => handleMessage(teacher.teacher_id)}
-                      disabled={chatLoading}
-                    >
-                      {chatLoading ? 'Starting...' : 'Message'}
-                    </Button>
                   </div>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* Info Footer */}
-      {!loading && recommendations.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-gray-200">
-          <p className="font-family-poppins text-xs text-gray-500 text-center">
-            Recommendations are personalized based on your learning history, interests, and similar students' choices.
-            Updated regularly as you interact with teachers.
-          </p>
+                {/* Action Buttons */}
+                <div className="flex gap-3 mt-5">
+                  <Button
+                    variant="outline"
+                    className="flex-1 py-2.5"
+                    onClick={() => navigate(`/profile/${teacher.teacher_id}`)}
+                  >
+                    View Profile
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="flex-1 py-2.5"
+                    onClick={() => handleMessage(teacher.teacher_id)}
+                    disabled={chatLoading}
+                  >
+                    {chatLoading ? 'Starting...' : 'Message'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -71,17 +71,37 @@ class RecommendationEngine:
         logger.info(f"Generating content-based recommendations for student {student_id}")
         
         # Get content-based recommendations
-        recommendations = self.content_based_engine.get_recommendations_for_student(
+        recommendations = self.content_based_engine.recommend_for_student(
             student_data,
-            limit=limit,
-            excluded_teacher_ids=excluded_teacher_ids
+            limit=limit
         )
         
-        # Add reason for each recommendation
-        for rec in recommendations:
-            rec['reason'] = self._generate_reason(rec['score'])
+        # Filter out excluded teachers
+        if excluded_teacher_ids:
+            recommendations = [
+                rec for rec in recommendations 
+                if str(rec[0]) not in excluded_teacher_ids
+            ]
+            recommendations = recommendations[:limit]
         
-        return recommendations
+        # Add reason for each recommendation
+        enriched_recommendations = []
+        for teacher_id, score in recommendations:
+            # Fetch teacher details from content_based_engine.teacher_data
+            teacher_data = self.content_based_engine.teacher_data.get(str(teacher_id))
+            if teacher_data:
+                enriched_recommendations.append({
+                    'teacher_id': str(teacher_id),
+                    'name': teacher_data.get('name', 'Unknown'),
+                    'score': float(score) * 100,  # Convert to percentage
+                    'reason': self._generate_reason(score),
+                    'subjects': [skill.get('name', '') for skill in teacher_data.get('skillsTeaching', [])],
+                    'expertise': [skill.get('name', '') for skill in teacher_data.get('skillsTeaching', [])],
+                    'average_rating': teacher_data.get('stats', {}).get('avgRating'),
+                    'years_of_experience': None  # Not in schema
+                })
+        
+        return enriched_recommendations
     
     def _generate_reason(self, content_score: float) -> str:
         """

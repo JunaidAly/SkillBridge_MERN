@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchWallet } from "../store/creditsSlice";
 import { fetchMeetings } from "../store/meetingsSlice";
 import { fetchProfile } from "../store/profileSlice";
-import AIRecommendedMatches from "../components/Dashboard/AIRecommendedMatches";
+import AIRecommendations from "../components/Dashboard/AIRecommendations";
 
 function DashboardPage() {
   const dispatch = useDispatch();
@@ -92,7 +92,7 @@ function DashboardPage() {
       </div>
 
       {/* AI Recommended Matches */}
-      <AIRecommendedMatches />
+      <AIRecommendations />
     </div>
   );
 }

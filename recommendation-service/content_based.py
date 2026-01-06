@@ -208,8 +208,12 @@ class ContentBasedEngine:
             # Calculate cosine similarity with all teachers
             similarities = cosine_similarity(student_vector, self.teacher_features_matrix)[0]
             
+            # Normalize scores to make them more realistic and varied
+            # Apply a scaling function to spread out the scores
+            normalized_similarities = self._normalize_scores(similarities)
+            
             # Get teacher IDs with scores
-            teacher_scores = list(zip(self.teacher_ids, similarities))
+            teacher_scores = list(zip(self.teacher_ids, normalized_similarities))
             
             # Sort by similarity (descending)
             teacher_scores.sort(key=lambda x: x[1], reverse=True)
@@ -224,6 +228,44 @@ class ContentBasedEngine:
         except Exception as e:
             logger.error(f"Error generating content-based recommendations: {e}")
             return []
+    
+    def _normalize_scores(self, scores: np.ndarray) -> np.ndarray:
+        """
+        Normalize similarity scores to make them more realistic and varied
+        
+        Uses a combination of min-max normalization and power scaling to:
+        1. Spread out high similarity scores
+        2. Penalize perfect matches slightly
+        3. Create more realistic percentage ranges (30-85% instead of 85-95%)
+        
+        Args:
+            scores: Raw cosine similarity scores (0-1)
+            
+        Returns:
+            Normalized scores with better distribution
+        """
+        if len(scores) == 0:
+            return scores
+        
+        # Apply power transformation to spread out high scores
+        # Using power of 1.5 makes high scores (0.9) drop more than low scores (0.3)
+        scores = np.power(scores, 1.5)
+        
+        # Apply min-max normalization to range [0.3, 0.85]
+        # This ensures scores are in a more realistic range
+        min_score = np.min(scores)
+        max_score = np.max(scores)
+        
+        if max_score - min_score > 0:
+            # Normalize to [0, 1] first
+            normalized = (scores - min_score) / (max_score - min_score)
+            # Scale to [0.3, 0.85] range
+            normalized = 0.3 + (normalized * 0.55)
+        else:
+            # All scores are the same, return middle value
+            normalized = np.full_like(scores, 0.65)
+        
+        return normalized
     
     def _get_default_recommendations(self, limit: int) -> List[Tuple[str, float]]:
         """
