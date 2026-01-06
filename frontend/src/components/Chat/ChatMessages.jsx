@@ -3,18 +3,43 @@ import { Phone, Video, MoreVertical, Send, Smile, ArrowLeft, Trash2 } from "luci
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMessages, upsertMessage, markConversationAsRead, deleteConversation } from "../../store/chatSlice";
 import { getSocket } from "../../socket";
+import EmojiPicker from "emoji-picker-react";
 
 function ChatMessages({ chat, onBack }) {
   const [message, setMessage] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const menuRef = useRef(null);
+  const emojiPickerRef = useRef(null);
   const dispatch = useDispatch();
   const { messagesByConversation } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
 
   const conversationId = chat?._id;
   const messages = messagesByConversation[conversationId] || [];
+
+  // Format last seen time
+  const getLastSeenText = () => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) return "Recently";
+    
+    const lastMessageTime = new Date(lastMessage.createdAt);
+    const now = new Date();
+    const diffMs = now - lastMessageTime;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return "Active now";
+    if (diffMins === 1) return "Last seen 1 min ago";
+    if (diffMins < 60) return `Last seen ${diffMins} mins ago`;
+    if (diffHours === 1) return "Last seen 1 hour ago";
+    if (diffHours < 24) return `Last seen ${diffHours} hours ago`;
+    if (diffDays === 1) return "Last seen yesterday";
+    if (diffDays < 7) return `Last seen ${diffDays} days ago`;
+    return lastMessageTime.toLocaleDateString();
+  };
 
   useEffect(() => {
     if (!conversationId) return;
@@ -116,6 +141,9 @@ function ChatMessages({ chat, onBack }) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setShowMenu(false);
       }
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -160,14 +188,14 @@ function ChatMessages({ chat, onBack }) {
               {chat.name || chat.participants?.[0]?.name || 'Unknown User'}
             </h3>
             <p className="font-family-poppins text-xs text-gray">
-              last seen 5 mins ago
+              {getLastSeenText()}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
+          {/* <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
             <Phone className="text-gray" size={20} />
-          </button>
+          </button> */}
           <button
             className="p-2 hover:bg-gray-100 rounded-lg transition-all"
             onClick={() => {
@@ -231,11 +259,28 @@ function ChatMessages({ chat, onBack }) {
       </div>
 
       {/* Input */}
-      <div className="bg-white px-4 py-3 border-t border-[#E5E5E5]">
+      <div className="bg-white px-4 py-3 border-t border-[#E5E5E5] relative">
         <div className="flex items-center gap-3">
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-            <Smile className="text-gray" size={20} />
-          </button>
+          <div className="relative" ref={emojiPickerRef}>
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+            >
+              <Smile className="text-gray" size={20} />
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute bottom-full left-0 mb-2 z-50">
+                <EmojiPicker
+                  onEmojiClick={(emojiObject) => {
+                    setMessage((prev) => prev + emojiObject.emoji);
+                    setShowEmojiPicker(false);
+                  }}
+                  width={320}
+                  height={400}
+                />
+              </div>
+            )}
+          </div>
           <input
             type="text"
             placeholder="Message"

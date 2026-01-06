@@ -90,15 +90,17 @@ class RecommendationEngine:
             # Fetch teacher details from content_based_engine.teacher_data
             teacher_data = self.content_based_engine.teacher_data.get(str(teacher_id))
             if teacher_data:
+                # Get skills teaching - it's stored as 'skills_teaching' in metadata
+                skills_teaching = teacher_data.get('skills_teaching', [])
                 enriched_recommendations.append({
                     'teacher_id': str(teacher_id),
                     'name': teacher_data.get('name', 'Unknown'),
                     'score': float(score) * 100,  # Convert to percentage
                     'reason': self._generate_reason(score),
-                    'subjects': [skill.get('name', '') for skill in teacher_data.get('skillsTeaching', [])],
-                    'expertise': [skill.get('name', '') for skill in teacher_data.get('skillsTeaching', [])],
-                    'average_rating': teacher_data.get('stats', {}).get('avgRating'),
-                    'years_of_experience': None  # Not in schema
+                    'subjects': [skill.get('name', '') if isinstance(skill, dict) else skill for skill in skills_teaching],
+                    'expertise': [skill.get('name', '') if isinstance(skill, dict) else skill for skill in skills_teaching],
+                    'average_rating': teacher_data.get('average_rating', 0),
+                    'years_of_experience': teacher_data.get('years_of_experience')
                 })
         
         return enriched_recommendations

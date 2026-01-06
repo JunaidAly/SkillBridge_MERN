@@ -223,7 +223,9 @@ function AIRecommendations() {
                       <span className="flex items-center gap-1">
                         <Star className="text-yellow-500 fill-yellow-500" size={14} />
                         <span className="font-family-poppins text-gray">
-                          {teacher.average_rating > 0 ? teacher.average_rating.toFixed(1) : "New"}
+                          {teacher.average_rating && teacher.average_rating > 0 
+                            ? `${teacher.average_rating.toFixed(1)}` 
+                            : "No ratings yet"}
                         </span>
                       </span>
 
