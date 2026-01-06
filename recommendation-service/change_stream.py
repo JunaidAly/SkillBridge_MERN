@@ -4,6 +4,7 @@ Monitors users collection and triggers model retraining when relevant changes oc
 """
 import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 from pymongo import MongoClient
@@ -23,30 +24,32 @@ class ChangeStreamWatcher:
         self.last_retrain_time: Optional[datetime] = None
         self.retrain_cooldown = timedelta(minutes=5)  # Don't retrain more often than every 5 minutes
         self.pending_retrain = False
-        self._task: Optional[asyncio.Task] = None
+        self._thread: Optional[threading.Thread] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         
     async def start(self, recommendation_engine):
         """Start watching for changes"""
         self.recommendation_engine = recommendation_engine
         self.is_running = True
-        self._task = asyncio.create_task(self._watch_changes())
+        self._loop = asyncio.get_event_loop()
+        
+        # Run change stream in separate thread to avoid blocking
+        self._thread = threading.Thread(target=self._watch_changes_sync, daemon=True)
+        self._thread.start()
+        
         logger.info("🔍 Change stream watcher started")
         
     async def stop(self):
         """Stop watching for changes"""
         self.is_running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
         if self.client:
             self.client.close()
         logger.info("🛑 Change stream watcher stopped")
         
-    async def _watch_changes(self):
-        """Watch MongoDB users collection for changes"""
+    def _watch_changes_sync(self):
+        """Watch MongoDB users collection for changes (runs in separate thread)"""
         try:
             # Create synchronous MongoDB client for change streams
             self.client = MongoClient(self.mongo_uri)
@@ -64,22 +67,22 @@ class ChangeStreamWatcher:
                 }
             ]
             
-            # Start watching
-            with collection.watch(pipeline) as stream:
+            # Start watching with timeout
+            with collection.watch(pipeline, max_await_time_ms=1000) as stream:
                 while self.is_running:
                     try:
-                        # Check for changes (non-blocking with timeout)
-                        if stream.try_next() is not None:
-                            change = stream.next()
-                            await self._handle_change(change)
-                        else:
-                            # No change, wait a bit
-                            await asyncio.sleep(1)
+                        change = stream.try_next()
+                        if change is not None:
+                            # Schedule async handler in main event loop
+                            asyncio.run_coroutine_threadsafe(
+                                self._handle_change(change),
+                                self._loop
+                            )
                             
                     except StopIteration:
-                        # No more changes
-                        await asyncio.sleep(1)
                         continue
+                    except Exception as e:
+                        logger.error(f"❌ Error in change stream: {e}")
                         
         except PyMongoError as e:
             logger.error(f"❌ MongoDB change stream error: {e}")
@@ -139,7 +142,12 @@ class ChangeStreamWatcher:
             await self._trigger_retrain()
             
     async def _trigger_retrain(self):
-        """Trigger actual model retraining"""
+        """Trigger actual model retraining (non-blocking)"""
+        # Run retraining in background to avoid blocking
+        asyncio.create_task(self._retrain_background())
+        
+    async def _retrain_background(self):
+        """Background task for retraining"""
         try:
             logger.info("🎓 Auto-retraining models due to database changes...")
             self.pending_retrain = False
@@ -156,7 +164,7 @@ class ChangeStreamWatcher:
                 logger.warning("⚠️  No teachers found, skipping retrain")
                 return
                 
-            # Train models
+            # Train models (this happens in background)
             results = await self.recommendation_engine.train(ratings_data, teachers_data)
             
             if results.get('content_based'):
