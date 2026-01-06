@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from config import settings
@@ -19,6 +19,7 @@ from models import (
     HealthResponse
 )
 from recommendation_engine import recommendation_engine
+from change_stream import get_change_watcher
 
 # Configure logging
 logging.basicConfig(
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
+    change_watcher = None
     try:
         # Startup
         logger.info("🚀 Starting AI Recommendation Service...")
@@ -48,6 +50,15 @@ async def lifespan(app: FastAPI):
         else:
             logger.info(f"✅ Models loaded: {models_loaded}")
         
+        # Start auto-training change watcher if enabled
+        if settings.enable_auto_training:
+            logger.info("🔄 Auto-training enabled")
+            change_watcher = get_change_watcher(settings.mongodb_uri, settings.mongodb_db_name)
+            change_watcher.retrain_cooldown = timedelta(minutes=settings.auto_training_cooldown_minutes)
+            await change_watcher.start(recommendation_engine)
+        else:
+            logger.info("⏸️  Auto-training disabled")
+        
         logger.info(f"✅ Service ready on port {settings.service_port}")
         
         yield
@@ -59,6 +70,8 @@ async def lifespan(app: FastAPI):
         # Shutdown
         logger.info("Shutting down...")
         try:
+            if change_watcher:
+                await change_watcher.stop()
             await db.disconnect()
         except:
             pass

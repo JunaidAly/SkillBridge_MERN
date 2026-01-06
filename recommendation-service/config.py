@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     content_weight: float = 0.4
     min_ratings_for_collaborative: int = 3
     
+    # Auto-Training
+    enable_auto_training: bool = True
+    auto_training_cooldown_minutes: int = 5
+    
     # Security
     api_key: str = "your-secret-api-key-here"
     allowed_origins: str = "http://localhost:5173,http://localhost:3000"

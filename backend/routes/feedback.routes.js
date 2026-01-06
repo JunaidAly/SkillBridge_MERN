@@ -160,8 +160,8 @@ router.post('/', authenticateToken, async (req, res) => {
       comment: comment?.trim() || '',
     });
 
-    // Update user stats (average rating, sessions taught/learned)
-    await updateUserStats(toUserId);
+    // Update user stats (average rating, sessions taught/learned, and individual skill ratings)
+    await updateUserStats(toUserId, skill.trim(), rating);
 
     const populated = await Feedback.findById(feedback._id)
       .populate('fromUser', 'name email avatar')
@@ -178,8 +178,12 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // Helper function to update user stats
-async function updateUserStats(userId) {
+async function updateUserStats(userId, skillName, newRating) {
   try {
+    const user = await User.findById(userId);
+    if (!user) return;
+
+    // Get all feedbacks for this user
     const feedbacks = await Feedback.find({ toUser: userId });
     const ratings = feedbacks.map((f) => f.rating);
     const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
@@ -188,10 +192,49 @@ async function updateUserStats(userId) {
     const uniqueMeetings = new Set(feedbacks.filter((f) => f.meeting).map((f) => String(f.meeting)));
     const sessionsTaught = uniqueMeetings.size;
 
-    await User.findByIdAndUpdate(userId, {
-      'stats.avgRating': Math.round(avgRating * 10) / 10,
-      'stats.sessionsTaught': sessionsTaught,
-    });
+    // Update overall stats
+    user.stats.avgRating = Math.round(avgRating * 10) / 10;
+    user.stats.sessionsTaught = sessionsTaught;
+
+    // Update individual skill rating and session count in skillsTeaching
+    if (skillName) {
+      // Extract base skill name (remove "Teaching - " or "Learning - " prefix if present)
+      let baseSkillName = skillName;
+      if (skillName.includes(' - ')) {
+        const parts = skillName.split(' - ');
+        baseSkillName = parts.length > 1 ? parts[1].split(' with ')[0].trim() : skillName;
+      }
+
+      // Find the skill in skillsTeaching array
+      const skillIndex = user.skillsTeaching.findIndex(
+        (s) => s.name.toLowerCase() === baseSkillName.toLowerCase()
+      );
+
+      if (skillIndex !== -1) {
+        // Skill exists - calculate average rating for this specific skill
+        const skillFeedbacks = feedbacks.filter((f) => {
+          const fSkillName = f.skill.includes(' - ') 
+            ? f.skill.split(' - ')[1].split(' with ')[0].trim()
+            : f.skill;
+          return fSkillName.toLowerCase() === baseSkillName.toLowerCase();
+        });
+
+        const skillRatings = skillFeedbacks.map((f) => f.rating);
+        const skillAvgRating = skillRatings.length > 0 
+          ? skillRatings.reduce((a, b) => a + b, 0) / skillRatings.length 
+          : 0;
+
+        // Count unique meetings for this skill
+        const skillMeetings = new Set(
+          skillFeedbacks.filter((f) => f.meeting).map((f) => String(f.meeting))
+        );
+
+        user.skillsTeaching[skillIndex].rating = Math.round(skillAvgRating * 10) / 10;
+        user.skillsTeaching[skillIndex].sessions = skillMeetings.size;
+      }
+    }
+
+    await user.save();
   } catch (error) {
     console.error('Error updating user stats:', error);
   }
