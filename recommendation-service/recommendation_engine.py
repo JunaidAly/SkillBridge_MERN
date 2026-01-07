@@ -116,14 +116,14 @@ class RecommendationEngine:
         else:
             return "Matches some of your learning interests"
     
-    def load_models(self) -> Dict[str, bool]:
+    async def load_models(self) -> Dict[str, bool]:
         """
-        Load pre-trained content-based model from disk
+        Load pre-trained content-based model from MongoDB
         
         Returns:
             Dict indicating if model was successfully loaded
         """
-        results = {'content_based': self.content_based_engine.load_model()}
+        results = {'content_based': await self.content_based_engine.load_model()}
         return results
     
     def save_models(self) -> Dict[str, bool]:

@@ -41,9 +41,9 @@ async def lifespan(app: FastAPI):
         # Connect to MongoDB
         await db.connect()
         
-        # Try to load existing models
-        logger.info("Loading existing models...")
-        models_loaded = recommendation_engine.load_models()
+        # Try to load existing models from MongoDB
+        logger.info("Loading existing models from MongoDB...")
+        models_loaded = await recommendation_engine.load_models()
         
         if not any(models_loaded.values()):
             logger.warning("⚠️  No pre-trained models found. Please call /train endpoint first.")

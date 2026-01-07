@@ -10,6 +10,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import joblib
 import os
 from config import settings
+from model_storage import model_storage
 
 logger = logging.getLogger(__name__)
 
@@ -291,14 +292,32 @@ class ContentBasedEngine:
         return self.teacher_data.get(teacher_id)
     
     def save_model(self):
-        """Save trained model to disk"""
+        """Save trained model to MongoDB"""
         try:
             if self.vectorizer is None or self.teacher_features_matrix is None:
                 logger.warning("No model to save")
                 return
             
-            joblib.dump(self.vectorizer, self.vectorizer_path)
-            joblib.dump(self.teacher_features_matrix, self.features_path)
+            # Save to MongoDB instead of filesystem
+            import asyncio
+            
+            # Save vectorizer
+            asyncio.create_task(
+                model_storage.save_model(
+                    'tfidf_vectorizer',
+                    self.vectorizer,
+                    {'type': 'TfidfVectorizer', 'teachers_count': len(self.teacher_ids)}
+                )
+            )
+            
+            # Save features matrix
+            asyncio.create_task(
+                model_storage.save_model(
+                    'teacher_features',
+                    self.teacher_features_matrix,
+                    {'shape': self.teacher_features_matrix.shape}
+                )
+            )
             
             # Save metadata
             metadata = {
@@ -306,29 +325,45 @@ class ContentBasedEngine:
                 'teacher_data': self.teacher_data,
                 'is_trained': self.is_trained
             }
-            joblib.dump(metadata, self.metadata_path)
+            asyncio.create_task(
+                model_storage.save_model(
+                    'content_metadata',
+                    metadata,
+                    {'teachers_count': len(self.teacher_ids)}
+                )
+            )
             
-            logger.info(f"✅ Content-based model saved")
+            logger.info(f"✅ Content-based model saved to MongoDB")
             
         except Exception as e:
             logger.error(f"Error saving content-based model: {e}")
     
-    def load_model(self) -> bool:
-        """Load trained model from disk"""
+    async def load_model(self) -> bool:
+        """Load trained model from MongoDB"""
         try:
-            if not all(os.path.exists(p) for p in [self.vectorizer_path, self.features_path, self.metadata_path]):
-                logger.info("No saved content-based model found")
+            # Load vectorizer
+            self.vectorizer = await model_storage.load_model('tfidf_vectorizer')
+            if self.vectorizer is None:
+                logger.info("No saved vectorizer found in MongoDB")
                 return False
             
-            self.vectorizer = joblib.load(self.vectorizer_path)
-            self.teacher_features_matrix = joblib.load(self.features_path)
-            metadata = joblib.load(self.metadata_path)
+            # Load features matrix
+            self.teacher_features_matrix = await model_storage.load_model('teacher_features')
+            if self.teacher_features_matrix is None:
+                logger.info("No saved features matrix found in MongoDB")
+                return False
+            
+            # Load metadata
+            metadata = await model_storage.load_model('content_metadata')
+            if metadata is None:
+                logger.info("No saved metadata found in MongoDB")
+                return False
             
             self.teacher_ids = metadata['teacher_ids']
             self.teacher_data = metadata['teacher_data']
             self.is_trained = metadata['is_trained']
             
-            logger.info(f"✅ Content-based model loaded")
+            logger.info(f"✅ Content-based model loaded from MongoDB")
             logger.info(f"   Teachers: {len(self.teacher_ids)}")
             
             return True
