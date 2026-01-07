@@ -1,6 +1,64 @@
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
+
+// Initialize Resend if API key is available
+const resendApiKey = process.env.RESEND_API_KEY;
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 export async function sendVerificationCode(email, code) {
+  // Try Resend first (if configured)
+  if (resend && resendApiKey) {
+    try {
+      console.log('📧 Sending verification code via Resend to:', email);
+      
+      const { data, error } = await resend.emails.send({
+        from: 'SkillBridge <onboarding@resend.dev>', // Use your domain once verified
+        to: email,
+        subject: 'SkillBridge Verification Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0;">SkillBridge</h1>
+            </div>
+            <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+              <h2 style="color: #333; margin-top: 0;">Your Verification Code</h2>
+              <p style="color: #666; font-size: 16px;">Please use the following code to verify your account:</p>
+              <div style="background: white; border: 2px dashed #667eea; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+                <p style="font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 5px; margin: 0;">${code}</p>
+              </div>
+              <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+              <p style="color: #999; font-size: 12px; margin-top: 30px;">If you didn't request this code, please ignore this email.</p>
+            </div>
+          </div>
+        `,
+      });
+
+      if (error) {
+        console.error('❌ Resend error:', error);
+        throw error;
+      }
+
+      console.log('✅ Email sent successfully via Resend:', data?.id);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Error sending via Resend:', error.message);
+      // Fall through to console logging
+    }
+  }
+
+  // Fallback: Log to console if Resend not configured or failed
+  console.log('='.repeat(50));
+  console.log(`📧 Verification Code for ${email}: ${code}`);
+  console.log('='.repeat(50));
+  if (!resendApiKey) {
+    console.log('⚠️  RESEND_API_KEY not configured. Add it to environment variables.');
+  }
+  return true;
+}
+
+  
+  /* OLD SMTP CODE - Keeping for reference
   // Check if SMTP is configured
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
@@ -170,5 +228,4 @@ export async function sendMeetingInviteEmail(email, recipientName, meetingDetail
     console.log('='.repeat(50));
     return true;
   }
-}
-
+*/
