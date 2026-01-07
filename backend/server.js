@@ -31,7 +31,7 @@ const server = http.createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
     origin: [
-      'https://skill-bridge-mern.vercel.app/', // Add your actual Vercel URL here
+      'https://skill-bridge-mern.vercel.app', // Your Vercel frontend URL
       'http://localhost:5173', // Keep for local development
       'http://localhost:3000'
     ],
@@ -45,7 +45,7 @@ app.set('io', io);
 // Middleware
 app.use(cors({
   origin: [
-    'https://skill-bridge-mern.vercel.app/', // Add your actual Vercel URL here
+    'https://skill-bridge-mern.vercel.app', // Your Vercel frontend URL
     'http://localhost:5173', // Keep for local development
     'http://localhost:3000'
   ],
