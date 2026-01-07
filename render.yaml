@@ -6,7 +6,7 @@ services:
   # Backend Service (Node.js/Express)
   - type: web
     name: skillbridge-backend
-    env: node
+    runtime: node
     region: oregon # Change to your preferred region: oregon, frankfurt, singapore, ohio
     plan: free # Options: free, starter ($7), standard ($25)
     branch: main # Change to your deployment branch if different
@@ -14,6 +14,9 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api
+    # Note: Using native Node runtime instead of Docker for simpler deployment
+    # To use Docker instead, uncomment the line below and comment out runtime/buildCommand/startCommand
+    # dockerfilePath: ./backend/Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
@@ -48,7 +51,7 @@ services:
   # Recommendation Service (Python/FastAPI)
   - type: web
     name: skillbridge-recommendation-service
-    env: python
+    runtime: python
     region: oregon # Use same region as backend
     plan: free
     branch: main
@@ -56,6 +59,9 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    # Note: Using native Python runtime instead of Docker for simpler deployment
+    # To use Docker instead, uncomment the line below and comment out runtime/buildCommand/startCommand
+    # dockerfilePath: ./recommendation-service/Dockerfile
     envVars:
       - key: MONGODB_URI
         sync: false # Set this manually in Render dashboard (same as backend)
