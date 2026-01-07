@@ -30,7 +30,11 @@ const server = http.createServer(app);
 
 const io = new SocketIOServer(server, {
   cors: {
-    origin: true,
+    origin: [
+      'https://skillbridge-mern.vercel.app', // Add your actual Vercel URL here
+      'http://localhost:5173', // Keep for local development
+      'http://localhost:3000'
+    ],
     credentials: true,
   },
 });
@@ -39,7 +43,14 @@ const io = new SocketIOServer(server, {
 app.set('io', io);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://skillbridge-mern.vercel.app', // Add your actual Vercel URL here
+    'http://localhost:5173', // Keep for local development
+    'http://localhost:3000'
+  ],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
