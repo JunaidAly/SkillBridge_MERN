@@ -132,6 +132,8 @@ export async function sendVerificationCode(email, code) {
   }
 }
 
+*/
+
 export async function sendMeetingInviteEmail(email, recipientName, meetingDetails) {
   const { title, startsAt, duration, skill, joinUrl, organizerName } = meetingDetails;
 
@@ -228,4 +230,4 @@ export async function sendMeetingInviteEmail(email, recipientName, meetingDetail
     console.log('='.repeat(50));
     return true;
   }
-*/
+}
