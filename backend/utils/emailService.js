@@ -17,7 +17,7 @@ export async function sendVerificationCode(email, code) {
   }
 
   try {
-    // Create transporter
+    // Create transporter with timeout settings
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: parseInt(process.env.SMTP_PORT || '587'),
@@ -26,6 +26,10 @@ export async function sendVerificationCode(email, code) {
         user: smtpUser,
         pass: smtpPass,
       },
+      // Add timeout settings
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
       // For Gmail, you might need to use OAuth2 or App Password
       // For other providers, adjust settings accordingly
     });

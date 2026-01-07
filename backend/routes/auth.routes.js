@@ -39,9 +39,12 @@ router.post('/register', async (req, res) => {
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     });
 
-    await sendVerificationCode(user.email, code);
+    // Send email in background (non-blocking)
+    sendVerificationCode(user.email, code).catch(err => 
+      console.error('❌ Error sending verification email:', err.message)
+    );
 
-    // Return success but require verification
+    // Return success immediately
     res.status(201).json({
       success: true,
       requiresVerification: true,
@@ -80,9 +83,12 @@ router.post('/login', async (req, res) => {
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     });
 
-    await sendVerificationCode(user.email, code);
+    // Send email in background (non-blocking)
+    sendVerificationCode(user.email, code).catch(err => 
+      console.error('❌ Error sending verification email:', err.message)
+    );
 
-    // Return success but require verification
+    // Return success immediately
     res.json({
       success: true,
       requiresVerification: true,
