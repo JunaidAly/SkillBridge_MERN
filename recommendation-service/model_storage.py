@@ -45,7 +45,7 @@ class ModelStorage:
             }
             
             # Upsert (update or insert)
-            collection = db.client[db.db_name][self.collection_name]
+            collection = db.db[self.collection_name]
             await collection.update_one(
                 {'model_name': model_name},
                 {'$set': document},
@@ -70,7 +70,7 @@ class ModelStorage:
             The model object or None if not found
         """
         try:
-            collection = db.client[db.db_name][self.collection_name]
+            collection = db.db[self.collection_name]
             document = await collection.find_one({'model_name': model_name})
             
             if not document:
@@ -92,7 +92,7 @@ class ModelStorage:
     async def model_exists(self, model_name: str) -> bool:
         """Check if a model exists in MongoDB"""
         try:
-            collection = db.client[db.db_name][self.collection_name]
+            collection = db.db[self.collection_name]
             count = await collection.count_documents({'model_name': model_name})
             return count > 0
         except Exception as e:
@@ -102,7 +102,7 @@ class ModelStorage:
     async def delete_model(self, model_name: str) -> bool:
         """Delete a model from MongoDB"""
         try:
-            collection = db.client[db.db_name][self.collection_name]
+            collection = db.db[self.collection_name]
             result = await collection.delete_one({'model_name': model_name})
             logger.info(f"✅ Model '{model_name}' deleted from MongoDB")
             return result.deleted_count > 0
@@ -113,7 +113,7 @@ class ModelStorage:
     async def get_model_metadata(self, model_name: str) -> Optional[Dict]:
         """Get metadata for a model"""
         try:
-            collection = db.client[db.db_name][self.collection_name]
+            collection = db.db[self.collection_name]
             document = await collection.find_one(
                 {'model_name': model_name},
                 {'metadata': 1, 'created_at': 1, 'updated_at': 1}
