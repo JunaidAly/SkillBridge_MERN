@@ -58,14 +58,18 @@ export async function sendVerificationCode(email, code) {
       text: `Your SkillBridge verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this code, please ignore this email.`,
     });
 
-    console.log('✅ Verification email sent:', info.messageId);
+    console.log('✅ Verification email sent successfully:', info.messageId);
+    console.log('📧 Email sent to:', email);
     return true;
   } catch (error) {
     console.error('❌ Error sending verification email:', error.message);
+    console.error('❌ Error code:', error.code);
+    console.error('❌ Error details:', error);
     // Fallback to console logging if email fails
     console.log('='.repeat(50));
     console.log(`📧 Verification Code for ${email}: ${code}`);
     console.log('='.repeat(50));
+    console.log('⚠️  Email sending failed. Please check SMTP settings.');
     return true; // Return true to not block the registration/login flow
   }
 }
