@@ -1,184 +1,189 @@
-# SkillBridge MERN - AI-Powered Learning Platform
+# SkillBridge - Skill Exchange Platform
 
-A full-stack online learning platform with **AI-powered teacher recommendations** built with MERN stack (MongoDB, Express.js, React, Node.js) and Python FastAPI for machine learning.
+A MERN stack application connecting students and teachers for skill exchange with AI-powered recommendations, real-time chat, and integrated meeting scheduling.
 
-## 🌟 Key Features
+## 🚀 Quick Links
 
-### Core Platform
-- 👥 User authentication (Students & Teachers)
-- 💬 Real-time chat with Socket.IO
-- 📅 Meeting scheduling and management
-- ⭐ Rating and feedback system
-- 💳 Credits-based system
-- 🎓 Teacher profiles with skills and expertise
-- 📊 Dashboard with analytics
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Deploy to Vercel & Render
+- **[Frontend Implementation](FRONTEND_IMPLEMENTATION.md)** - React app details
+- **[Backend Implementation](BACKEND_IMPLEMENTATION.md)** - Node.js API details  
+- **[AI Recommendation Service](AI_RECOMMENDATION_SERVICE.md)** - Python ML service
 
-### 🤖 AI Recommendation System (NEW!)
-- **Hybrid Recommendation Engine:**
-  - Collaborative Filtering (SVD) - Based on similar students' choices
-  - Content-Based Filtering (TF-IDF) - Based on student interests and teacher expertise
-  - Smart fallback for cold-start scenarios
-- **Personalized Matching:**
-  - AI-calculated match scores
-  - Contextual reasons for recommendations
-  - Real-time updates as you interact
-- **Production-Ready:**
-  - Microservice architecture with FastAPI
-  - Model persistence and caching
-  - Automated retraining support
+## 📋 Features
 
-## 🏗️ Architecture
+- 🔐 **Authentication** - JWT + 2FA + Google OAuth
+- 💬 **Real-time Chat** - Socket.IO messaging
+- 🤖 **AI Recommendations** - Content-based teacher matching
+- 📅 **Meeting Scheduler** - Book sessions with teachers
+- 💳 **Credit System** - Virtual currency for services
+- 📊 **User Profiles** - Skills, ratings, and portfolios
+- 📧 **Email Notifications** - Verification codes & invites
+- ☁️ **Cloud Storage** - Cloudinary for images
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Frontend (React + Vite)                  │
-│                     Port: 5173                               │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                Backend (Node.js + Express)                   │
-│                     Port: 5000                               │
-│  • REST API                                                  │
-│  • Socket.IO                                                 │
-│  • JWT Authentication                                        │
-└──────────────┬─────────────────────────┬────────────────────┘
-               │                         │
-               ▼                         ▼
-┌──────────────────────────┐  ┌──────────────────────────────┐
-│  MongoDB Database        │  │  Python Recommendation API   │
-│  Port: 27017            │  │  Port: 8001                  │
-│                          │  │  • FastAPI                   │
-│  • users                 │  │  • Collaborative Filtering   │
-│  • teachers              │  │  • Content-Based Filtering   │
-│  • ratings               │  │  • Hybrid Algorithm          │
-│  • messages              │  │                              │
-│  • meetings              │  │                              │
-└──────────────────────────┘  └──────────────────────────────┘
-```
-
-## 📦 Tech Stack
+## 🛠️ Tech Stack
 
 ### Frontend
-- **React 18** - UI library
-- **Vite** - Build tool
-- **Redux Toolkit** - State management
-- **React Router** - Navigation
-- **Tailwind CSS** - Styling
-- **Lucide React** - Icons
-- **Socket.IO Client** - Real-time communication
+- React 19 + Vite
+- Redux Toolkit
+- Tailwind CSS
+- Socket.IO Client
 
-### Backend
-- **Node.js** - Runtime
-- **Express.js** - Web framework
-- **MongoDB + Mongoose** - Database
-- **JWT** - Authentication
-- **Socket.IO** - WebSocket
-- **Axios** - HTTP client
-- **Cloudinary** - File uploads
-- **Nodemailer** - Email service
+### Backend  
+- Node.js + Express
+- MongoDB + Mongoose
+- Socket.IO
+- JWT Authentication
 
-### AI/ML Service
-- **Python 3.11** - Runtime
-- **FastAPI** - Web framework
-- **Motor** - Async MongoDB driver
-- **scikit-surprise** - Collaborative filtering
-- **scikit-learn** - Content-based filtering (TF-IDF)
-- **Pandas & NumPy** - Data processing
-- **Pydantic v2** - Data validation
+### AI Service
+- Python 3.11
+- FastAPI
+- scikit-learn
+- MongoDB (model storage)
 
-### DevOps
-- **Docker & Docker Compose** - Containerization
-- **Redis** - Caching (optional)
-- **Nginx** - Reverse proxy
-
-## 🚀 Quick Start
+## 📦 Installation
 
 ### Prerequisites
-- Node.js 16+ 
-- Python 3.9+
-- MongoDB 5.0+
-- Git
+- Node.js 18+
+- Python 3.11+
+- MongoDB (local or Atlas)
 
-### Option 1: Automated Setup (Recommended - Windows)
-
-```powershell
-# Run the automated setup script
-.\start.ps1
+### Backend Setup
+```bash
+cd backend
+npm install
+cp .env.example .env
+# Edit .env with your credentials
+npm start
 ```
 
-This will:
-1. Check prerequisites
-2. Set up Python virtual environment
-3. Install all dependencies
-4. Start all services in separate terminals
+### Frontend Setup
+```bash
+cd frontend
+npm install
+cp .env.example .env
+# Edit .env with API URL
+npm run dev
+```
 
-### Option 2: Manual Setup
+### AI Service Setup
+```bash
+cd recommendation-service
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with MongoDB URI
+uvicorn main:app --reload --port 8001
+```
 
-See **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** for detailed step-by-step instructions.
+## 🌐 Production Deployment
 
-### Option 3: Docker Deployment
+- **Frontend:** Vercel - https://skill-bridge-mern.vercel.app
+- **Backend:** Render - https://skillbridge-mern.onrender.com
+- **AI Service:** Render - https://skillbridge-recommendation-service.onrender.com
+- **Database:** MongoDB Atlas (cloud)
+
+See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed instructions.
+
+## 📁 Project Structure
+
+```
+SkillBridge_MERN/
+├── frontend/              # React application
+├── backend/               # Express API server
+├── recommendation-service/# Python AI service
+├── DEPLOYMENT_GUIDE.md    # Production deployment
+├── FRONTEND_IMPLEMENTATION.md
+├── BACKEND_IMPLEMENTATION.md
+└── AI_RECOMMENDATION_SERVICE.md
+```
+
+## 🔑 Key Environment Variables
+
+### Backend (.env)
+```env
+MONGODB_URI=mongodb://localhost:27017/skillbridge
+JWT_SECRET=your-secret-key
+FRONTEND_URL=http://localhost:5173
+RECOMMENDATION_SERVICE_URL=http://localhost:8001
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+SMTP_HOST=smtp.gmail.com
+```
+
+### Frontend (.env)
+```env
+VITE_API_BASE_URL=http://localhost:5000/api
+VITE_SOCKET_URL=http://localhost:5000
+VITE_GOOGLE_CLIENT_ID=your-google-client-id
+```
+
+### AI Service (.env)
+```env
+MONGODB_URI=mongodb://localhost:27017/skillbridge
+API_KEY=your-api-key
+ALLOWED_ORIGINS=http://localhost:5173
+```
+
+## 🧪 Testing
 
 ```bash
-# Copy and configure production environment
-cp .env.production.example .env.production
+# Backend (if tests exist)
+cd backend
+npm test
 
-# Build and start all services
-docker-compose up -d
+# Frontend (if tests exist)
+cd frontend
+npm test
 
-# Train models
-curl -X POST http://localhost:8001/train \
-  -H "X-API-Key: your-api-key" \
-  -d '{"force_retrain": true}'
+# AI Service (if tests exist)
+cd recommendation-service
+pytest
 ```
 
-## 🌐 Access Points
+## 📖 API Documentation
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| Frontend | http://localhost:5173 | React application |
-| Backend API | http://localhost:5000 | REST API |
-| Python AI API | http://localhost:8001/docs | FastAPI with Swagger UI |
-| MongoDB | mongodb://localhost:27017 | Database |
+Once running, visit:
+- Backend: http://localhost:5000/api (endpoints in BACKEND_IMPLEMENTATION.md)
+- AI Service: http://localhost:8001/docs (Swagger UI)
 
-## 📚 Documentation
+## 🐛 Common Issues
 
-- **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** - Complete setup instructions
-- **[recommendation-service/README.md](./recommendation-service/README.md)** - AI service documentation
-- **API Docs:** http://localhost:8001/docs (when service is running)
+### MongoDB Connection Failed
+- Ensure MongoDB is running locally or Atlas IP whitelist configured
+- Check MONGODB_URI format
 
-## 🎯 Initial Model Training (Required)
+### CORS Errors
+- Verify FRONTEND_URL in backend matches frontend origin
+- No trailing slashes in URLs
 
-After starting all services, train the AI models:
+### Socket.IO Not Connecting
+- Check VITE_SOCKET_URL matches backend
+- Ensure JWT token is sent in socket auth
 
-```powershell
-# Using PowerShell
-$headers = @{"X-API-Key" = "dev-secret-key-12345"; "Content-Type" = "application/json"}
-$body = @{force_retrain = $true} | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:8001/train" -Method POST -Headers $headers -Body $body
-```
+### AI Recommendations Not Working
+- Train models first: `POST /api/recommendations/train` (admin)
+- Check RECOMMENDATION_SERVICE_URL and API_KEY match
 
-**Requirements:**
-- At least 10 ratings in the database
-- At least 5 teachers with filled profiles
+## 👥 Contributing
 
-## 🔧 Troubleshooting
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
-Common issues and solutions in [SETUP_GUIDE.md](./SETUP_GUIDE.md#troubleshooting)
+## 📄 License
 
-Quick fixes:
-- **Models not trained:** Run training endpoint
-- **MongoDB not connected:** Start MongoDB service
-- **Port in use:** Kill process or change port
-- **No recommendations:** Train models and ensure data exists
+This project is licensed under the MIT License.
 
-## 📞 Support
+## 👤 Author
 
-For issues and questions:
-- Check [SETUP_GUIDE.md](./SETUP_GUIDE.md)
-- Review service logs
-- Open an issue on GitHub
+**Junaid Ali**
+- GitHub: [@JunaidAly](https://github.com/JunaidAly)
 
----
+## 🙏 Acknowledgments
 
-**Built with ❤️ using MERN Stack + AI**
+- MongoDB Atlas for database hosting
+- Render for backend hosting
+- Vercel for frontend hosting
+- Cloudinary for image storage
