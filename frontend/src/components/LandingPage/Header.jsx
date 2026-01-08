@@ -2,6 +2,13 @@ import { Link } from 'react-router-dom';
 import Button from '../../ui/Button';
 
 function Header() {
+  const scrollToSection = (sectionId) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <header className="bg-light-bg font-family-josefin ">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -17,18 +24,18 @@ function Header() {
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <a
-              href="#features"
-              className="text-black font-poppins hover:text-teal transition-colors"
+            <button
+              onClick={() => scrollToSection('features')}
+              className="text-black font-poppins hover:text-teal transition-colors cursor-pointer"
             >
               Features
-            </a>
-            <a
-              href="#how-it-works"
-              className="text-black font-poppins hover:text-teal transition-colors"
+            </button>
+            <button
+              onClick={() => scrollToSection('how-it-works')}
+              className="text-black font-poppins hover:text-teal transition-colors cursor-pointer"
             >
               How It Works
-            </a>
+            </button>
           </nav>
 
           {/* Buttons */}

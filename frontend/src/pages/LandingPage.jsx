@@ -10,9 +10,15 @@ function LandingPage() {
     <div className="min-h-screen bg-light-bg flex flex-col">
       <Header />
       <main className="grow">
+        <div id="hero">
         <Hero />
-        <Features />
-        <HowItWorks />
+        </div>
+        <div id="features">
+          <Features />
+        </div>
+        <div id="how-it-works">
+          <HowItWorks />
+        </div>
         <CTA />
       </main>
       <Footer />

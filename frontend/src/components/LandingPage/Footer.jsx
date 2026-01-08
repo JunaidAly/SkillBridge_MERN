@@ -1,4 +1,10 @@
 function Footer() {
+    const scrollToSection = (sectionId) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
   return (
     <footer className="text-black font-family-poppins">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -22,8 +28,8 @@ function Footer() {
             <ul className="space-y-2 font-poppins text-sm">
               <li>
                 <a
-                  href="#about"
-                  className="text-black hover:text-teal transition-colors"
+                  onClick={() => scrollToSection("hero")}
+                  className="text-black cursor-pointer hover:text-teal transition-colors"
                 >
                   About Us
                 </a>
@@ -31,8 +37,8 @@ function Footer() {
 
               <li>
                 <a
-                  href="#how-it-works"
-                  className="text-black hover:text-teal transition-colors"
+                  onClick={() => scrollToSection("how-it-works")}
+                  className="text-black cursor-pointer hover:text-teal transition-colors"
                 >
                   How SkillBridge Works
                 </a>
