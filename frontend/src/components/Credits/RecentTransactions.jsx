@@ -1,6 +1,16 @@
+import { useState } from "react";
 import { CheckCircle, ArrowUpRight, CreditCard, Gift } from "lucide-react";
+import Pagination from "../../ui/Pagination";
 
 function RecentTransactions({ transactions = [], loading }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
+
+  // Calculate pagination
+  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedTransactions = transactions.slice(startIndex, endIndex);
   const getIcon = (type, isPositive) => {
     if (type === "purchase") {
       return (
@@ -81,42 +91,47 @@ function RecentTransactions({ transactions = [], loading }) {
           No transactions yet. Start teaching or learning to earn/spend credits!
         </p>
       ) : (
-        <div className="space-y-4">
-          {transactions.map((transaction) => {
-            const isPositive = transaction.amount > 0;
-            return (
-              <div
-                key={transaction._id}
-                className="flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  {getIcon(transaction.type, isPositive)}
-                  <div>
-                    <p className="font-family-poppins text-sm font-medium text-black">
-                      {transaction.description}
-                    </p>
-                    <p className="font-family-poppins text-xs text-gray">
-                      {formatDate(transaction.createdAt)}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`font-family-poppins text-base font-semibold ${
-                    isPositive ? "text-teal" : "text-red"
-                  }`}
+        <>
+          <div className="space-y-4">
+            {paginatedTransactions.map((transaction) => {
+              const isPositive = transaction.amount > 0;
+              return (
+                <div
+                  key={transaction._id}
+                  className="flex items-center justify-between"
                 >
-                  {formatAmount(transaction.amount)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  <div className="flex items-center gap-3">
+                    {getIcon(transaction.type, isPositive)}
+                    <div>
+                      <p className="font-family-poppins text-sm font-medium text-black">
+                        {transaction.description}
+                      </p>
+                      <p className="font-family-poppins text-xs text-gray">
+                        {formatDate(transaction.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`font-family-poppins text-base font-semibold ${
+                      isPositive ? "text-teal" : "text-red"
+                    }`}
+                  >
+                    {formatAmount(transaction.amount)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
 
-      {transactions.length > 0 && (
-        <button className="w-full mt-6 text-center font-family-poppins text-sm font-medium text-teal hover:underline">
-          View All Transactions
-        </button>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          )}
+        </>
       )}
     </div>
   );
