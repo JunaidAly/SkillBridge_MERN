@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe } from "lucide-react";
 import Button from "../../ui/Button";
+import Pagination from "../../ui/Pagination";
 import { createConversation } from "../../store/chatSlice";
 import { fetchRecommendations } from "../../store/recommendationsSlice";
 import { fetchUsers } from "../../store/usersSlice";
@@ -17,6 +18,8 @@ function AIRecommendations() {
   const { recommendations, loading, error, method } = useSelector((state) => state.recommendations);
   const { users } = useSelector((state) => state.users);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 3;
   
   // Create a map of teacher data for quick lookup
   const teacherMap = users.reduce((acc, user) => {
@@ -41,6 +44,17 @@ function AIRecommendations() {
     const expertise = teacher.expertise?.join(" ").toLowerCase() || "";
     return name.includes(query) || skills.includes(query) || expertise.includes(query);
   });
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredRecommendations.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedRecommendations = filteredRecommendations.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   useEffect(() => {
     // Fetch all users for teacher details
@@ -147,8 +161,9 @@ function AIRecommendations() {
 
       {/* Match Cards */}
       {!loading && !error && filteredRecommendations.length > 0 && (
-        <div className="space-y-4">
-          {filteredRecommendations.map((teacher) => {
+        <>
+          <div className="space-y-4">
+            {paginatedRecommendations.map((teacher) => {
             // Get full teacher data from users store
             const teacherData = teacherMap[teacher.teacher_id];
             
@@ -262,6 +277,16 @@ function AIRecommendations() {
             );
           })}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        )}
+      </>
       )}
     </div>
   );
