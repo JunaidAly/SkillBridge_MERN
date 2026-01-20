@@ -4,7 +4,7 @@ import Button from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { useDispatch, useSelector } from "react-redux";
 import { createMeeting, fetchMeetings } from "../../store/meetingsSlice";
-import { fetchWallet, earnTeachingCredits, spendLearningCredits } from "../../store/creditsSlice";
+import { fetchWallet, processSessionCredits } from "../../store/creditsSlice";
 import { fetchProfile } from "../../store/profileSlice";
 
 function SchedulePanel({ selectedChat }) {
@@ -89,27 +89,19 @@ function SchedulePanel({ selectedChat }) {
         })
       ).unwrap();
 
-      // Process credits based on role
-      if (sessionRole === "teaching") {
-        await dispatch(
-          earnTeachingCredits({
-            meetingId: meetingResult._id,
-            learnerId: selectedChat.otherUserId,
-          })
-        ).unwrap();
-      } else {
-        await dispatch(
-          spendLearningCredits({
-            meetingId: meetingResult._id,
-            teacherId: selectedChat.otherUserId,
-          })
-        ).unwrap();
-      }
+      // Process credits for both users using the new unified endpoint
+      await dispatch(
+        processSessionCredits({
+          meetingId: meetingResult._id,
+          otherUserId: selectedChat.otherUserId,
+          sessionRole: sessionRole,
+        })
+      ).unwrap();
 
       // Refresh wallet and profile (for updated stats)
       dispatch(fetchWallet());
       dispatch(fetchProfile());
-      toast.success("Session scheduled successfully!");
+      toast.success("Session scheduled successfully! Credits processed for both users.");
     } catch (err) {
       toast.error(err || "Failed to schedule session");
     } finally {

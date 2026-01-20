@@ -61,6 +61,22 @@ export const spendLearningCredits = createAsyncThunk(
   }
 );
 
+export const processSessionCredits = createAsyncThunk(
+  'credits/processSession',
+  async ({ meetingId, otherUserId, sessionRole }, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post('/credits/process-session', { 
+        meetingId, 
+        otherUserId, 
+        sessionRole 
+      });
+      return res.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to process credits');
+    }
+  }
+);
+
 const creditsSlice = createSlice({
   name: 'credits',
   initialState: {
@@ -127,6 +143,19 @@ const creditsSlice = createSlice({
         }
       })
       .addCase(spendLearningCredits.rejected, (state, action) => {
+        state.error = action.payload;
+      })
+      // Process session credits (both users)
+      .addCase(processSessionCredits.fulfilled, (state, action) => {
+        if (state.wallet && action.payload.currentUser) {
+          state.wallet.balance = action.payload.currentUser.newBalance;
+        }
+        // Add transaction to the beginning
+        if (action.payload.currentUser?.transaction) {
+          state.transactions = [action.payload.currentUser.transaction, ...state.transactions];
+        }
+      })
+      .addCase(processSessionCredits.rejected, (state, action) => {
         state.error = action.payload;
       });
   },

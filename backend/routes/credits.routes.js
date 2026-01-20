@@ -211,4 +211,126 @@ router.get('/check-balance', authenticateToken, async (req, res) => {
   }
 });
 
+// Process session credits for both participants (called when meeting is scheduled)
+router.post('/process-session', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { meetingId, otherUserId, sessionRole } = req.body;
+
+    if (!otherUserId) {
+      return res.status(400).json({ message: 'otherUserId is required' });
+    }
+
+    if (!sessionRole || !['teaching', 'learning'].includes(sessionRole)) {
+      return res.status(400).json({ message: 'Invalid sessionRole. Must be "teaching" or "learning"' });
+    }
+
+    const otherUser = await User.findById(otherUserId).select('name');
+    if (!otherUser) {
+      return res.status(404).json({ message: 'Other user not found' });
+    }
+
+    const currentUser = await User.findById(userId).select('name');
+    const currentUserWallet = await getOrCreateWallet(userId);
+    const otherUserWallet = await getOrCreateWallet(otherUserId);
+
+    let currentUserTransaction, otherUserTransaction;
+
+    if (sessionRole === 'teaching') {
+      // Current user is teaching, other user is learning
+      // Teacher gets +25 credits
+      currentUserWallet.balance += CREDITS_PER_TEACHING_SESSION;
+      currentUserWallet.totalEarned += CREDITS_PER_TEACHING_SESSION;
+      
+      // Learner loses -25 credits
+      if (otherUserWallet.balance < CREDITS_PER_LEARNING_SESSION) {
+        return res.status(400).json({
+          message: `${otherUser.name} has insufficient credits`,
+          required: CREDITS_PER_LEARNING_SESSION,
+          balance: otherUserWallet.balance,
+        });
+      }
+      otherUserWallet.balance -= CREDITS_PER_LEARNING_SESSION;
+      otherUserWallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
+
+      // Save both wallets
+      await currentUserWallet.save();
+      await otherUserWallet.save();
+
+      // Record transactions for both users
+      currentUserTransaction = await CreditTransaction.create({
+        user: userId,
+        type: 'teaching',
+        amount: CREDITS_PER_TEACHING_SESSION,
+        description: `Teaching session with ${otherUser.name}`,
+        meeting: meetingId || null,
+        otherUser: otherUserId,
+      });
+
+      otherUserTransaction = await CreditTransaction.create({
+        user: otherUserId,
+        type: 'learning',
+        amount: -CREDITS_PER_LEARNING_SESSION,
+        description: `Learning session with ${currentUser.name}`,
+        meeting: meetingId || null,
+        otherUser: userId,
+      });
+
+    } else {
+      // Current user is learning, other user is teaching
+      // Learner loses -25 credits
+      if (currentUserWallet.balance < CREDITS_PER_LEARNING_SESSION) {
+        return res.status(400).json({
+          message: 'Insufficient credits',
+          required: CREDITS_PER_LEARNING_SESSION,
+          balance: currentUserWallet.balance,
+        });
+      }
+      currentUserWallet.balance -= CREDITS_PER_LEARNING_SESSION;
+      currentUserWallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
+      
+      // Teacher gets +25 credits
+      otherUserWallet.balance += CREDITS_PER_TEACHING_SESSION;
+      otherUserWallet.totalEarned += CREDITS_PER_TEACHING_SESSION;
+
+      // Save both wallets
+      await currentUserWallet.save();
+      await otherUserWallet.save();
+
+      // Record transactions for both users
+      currentUserTransaction = await CreditTransaction.create({
+        user: userId,
+        type: 'learning',
+        amount: -CREDITS_PER_LEARNING_SESSION,
+        description: `Learning session with ${otherUser.name}`,
+        meeting: meetingId || null,
+        otherUser: otherUserId,
+      });
+
+      otherUserTransaction = await CreditTransaction.create({
+        user: otherUserId,
+        type: 'teaching',
+        amount: CREDITS_PER_TEACHING_SESSION,
+        description: `Teaching session with ${currentUser.name}`,
+        meeting: meetingId || null,
+        otherUser: userId,
+      });
+    }
+
+    res.json({
+      success: true,
+      currentUser: {
+        transaction: currentUserTransaction,
+        newBalance: currentUserWallet.balance,
+      },
+      otherUser: {
+        transaction: otherUserTransaction,
+        newBalance: otherUserWallet.balance,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;
