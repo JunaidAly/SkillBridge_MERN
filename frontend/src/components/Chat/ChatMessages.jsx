@@ -12,12 +12,18 @@ function ChatMessages({ chat, onBack }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const menuRef = useRef(null);
   const emojiPickerRef = useRef(null);
+  const messagesEndRef = useRef(null);
   const dispatch = useDispatch();
   const { messagesByConversation } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
 
   const conversationId = chat?._id;
   const messages = messagesByConversation[conversationId] || [];
+
+  // Auto-scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Format last seen time
   const getLastSeenText = () => {
@@ -66,6 +72,11 @@ function ChatMessages({ chat, onBack }) {
       socket.off("newMessage", onNew);
     };
   }, [conversationId, dispatch, user, chat]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const displayMessages = useMemo(() => {
     const meId = user?.id;
@@ -256,6 +267,7 @@ function ChatMessages({ chat, onBack }) {
             </div>
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
