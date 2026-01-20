@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import VerificationCode from '../models/VerificationCode.js';
 import jwt from 'jsonwebtoken';
 import { sendVerificationCode } from '../utils/emailService.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -297,6 +298,32 @@ router.post('/resend-code', async (req, res) => {
     res.json({
       success: true,
       message: 'Verification code resent to your email',
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get current user (verify token)
+router.get('/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        skills: user.skills,
+        interests: user.interests,
+        bio: user.bio,
+        profilePicture: user.profilePicture,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

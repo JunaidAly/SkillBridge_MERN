@@ -11,19 +11,32 @@ import ChatPage from "./pages/ChatPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import CreditsPage from "./pages/CreditsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import PublicRoute from "./components/PublicRoute";
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <LandingPage />,
+    element: (
+      <PublicRoute>
+        <LandingPage />
+      </PublicRoute>
+    ),
   },
   {
     path: "/login",
-    element: <LoginPage />,
+    element: (
+      <PublicRoute>
+        <LoginPage />
+      </PublicRoute>
+    ),
   },
   {
     path: "/signup",
-    element: <SignUpPage />,
+    element: (
+      <PublicRoute>
+        <SignUpPage />
+      </PublicRoute>
+    ),
   },
   {
     path: "/verify",
