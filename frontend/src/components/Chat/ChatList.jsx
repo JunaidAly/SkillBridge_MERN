@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Menu } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchConversations } from "../../store/chatSlice";
+import ChatListSkeleton from "./ChatListSkeleton";
 
 function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,57 +66,58 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
 
       {/* Conversations List */}
       <div className="flex-1 overflow-y-auto">
-        {loading && (
-          <div className="p-4 font-family-poppins text-sm text-gray">Loading…</div>
-        )}
-        {filteredConversations.map((conv) => (
-          <div
-            key={conv._id}
-            onClick={() => onSelectChat(conv)}
-            className={`flex items-center gap-3 p-4 cursor-pointer transition-all ${
-              selectedChat?._id === conv._id
-                ? "bg-light-teal"
-                : "hover:bg-gray-50"
-            }`}
-          >
-            {/* Avatar */}
-            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
-              {conv.avatar ? (
-                <img
-                  src={conv.avatar}
-                  alt={conv.name}
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <span className="text-gray text-lg font-medium">
-                  {conv.name?.charAt(0) || 'U'}
-                </span>
-              )}
-            </div>
-
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <h3 className="font-family-poppins text-sm font-semibold text-black truncate">
-                  {conv.name}
-                </h3>
-                <span className="font-family-poppins text-xs text-gray">
-                  {conv.time}
-                </span>
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <p className="font-family-poppins text-xs text-gray truncate pr-2">
-                  {conv.lastMessage}
-                </p>
-                {conv.unread > 0 && (
-                  <span className="w-5 h-5 bg-teal text-white text-xs rounded-full flex items-center justify-center shrink-0">
-                    {conv.unread}
+        {loading ? (
+          <ChatListSkeleton />
+        ) : (
+          filteredConversations.map((conv) => (
+            <div
+              key={conv._id}
+              onClick={() => onSelectChat(conv)}
+              className={`flex items-center gap-3 p-4 cursor-pointer transition-all ${
+                selectedChat?._id === conv._id
+                  ? "bg-light-teal"
+                  : "hover:bg-gray-50"
+              }`}
+            >
+              {/* Avatar */}
+              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                {conv.avatar ? (
+                  <img
+                    src={conv.avatar}
+                    alt={conv.name}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="text-gray text-lg font-medium">
+                    {conv.name?.charAt(0) || 'U'}
                   </span>
                 )}
               </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-family-poppins text-sm font-semibold text-black truncate">
+                    {conv.name}
+                  </h3>
+                  <span className="font-family-poppins text-xs text-gray">
+                    {conv.time}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="font-family-poppins text-xs text-gray truncate pr-2">
+                    {conv.lastMessage}
+                  </p>
+                  {conv.unread > 0 && (
+                    <span className="w-5 h-5 bg-teal text-white text-xs rounded-full flex items-center justify-center shrink-0">
+                      {conv.unread}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
