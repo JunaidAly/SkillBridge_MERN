@@ -14,11 +14,11 @@ function AIRecommendations() {
   
   const { user } = useSelector((state) => state.auth);
   const { profile } = useSelector((state) => state.profile);
-  const { loading: chatLoading } = useSelector((state) => state.chat);
   const { recommendations, loading, error, method } = useSelector((state) => state.recommendations);
   const { users } = useSelector((state) => state.users);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [startingChatWith, setStartingChatWith] = useState(null);
   const ITEMS_PER_PAGE = 3;
   
   // Create a map of teacher data for quick lookup
@@ -68,11 +68,14 @@ function AIRecommendations() {
 
   const handleMessage = async (teacherId) => {
     try {
+      setStartingChatWith(teacherId);
       const result = await dispatch(createConversation(teacherId)).unwrap();
       navigate('/chat', { state: { conversationId: result._id } });
     } catch (error) {
       console.error('Failed to create conversation:', error);
       alert('Failed to start conversation. Please try again.');
+    } finally {
+      setStartingChatWith(null);
     }
   };
 
@@ -268,9 +271,9 @@ function AIRecommendations() {
                     variant="primary"
                     className="flex-1 py-2.5"
                     onClick={() => handleMessage(teacher.teacher_id)}
-                    disabled={chatLoading}
+                    disabled={startingChatWith === teacher.teacher_id}
                   >
-                    {chatLoading ? 'Starting...' : 'Message'}
+                    {startingChatWith === teacher.teacher_id ? 'Starting...' : 'Message'}
                   </Button>
                 </div>
               </div>
