@@ -52,7 +52,7 @@ function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static top-0 left-0 z-50 w-64 font-family-poppins min-h-screen bg-white border-r-2 border-[#E5E5E5] flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed lg:sticky top-0 left-0 z-50 w-64 font-family-poppins h-screen bg-white border-r-2 border-[#E5E5E5] flex flex-col transform transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
