@@ -15,6 +15,7 @@ import meetingsRoutes from './routes/meetings.routes.js';
 import feedbackRoutes from './routes/feedback.routes.js';
 import creditsRoutes from './routes/credits.routes.js';
 import recommendationsRoutes from './routes/recommendations.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
 import Conversation from './models/Conversation.js';
 import Message from './models/Message.js';
 
@@ -51,6 +52,10 @@ app.use(cors({
   ],
   credentials: true
 }));
+// Paddle webhook needs the raw body for signature verification - must be mounted
+// before the global express.json() parser, scoped only to this route.
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -79,6 +84,7 @@ app.use('/api/meetings', meetingsRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/credits', creditsRoutes);
 app.use('/api/recommendations', recommendationsRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Socket auth
 io.use((socket, next) => {

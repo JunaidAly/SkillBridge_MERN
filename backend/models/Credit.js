@@ -31,6 +31,16 @@ const creditTransactionSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+    source: {
+      type: String,
+      enum: ['paddle', 'admin', 'system'],
+      default: 'system',
+    },
+    transactionRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Transaction',
+      default: null,
+    },
   },
   { timestamps: true }
 );
