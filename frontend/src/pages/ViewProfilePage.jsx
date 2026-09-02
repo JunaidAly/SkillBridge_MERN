@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { MapPin, Globe, Clock, Star, ArrowLeft, Award, Loader2, Monitor, FileText } from "lucide-react";
+import { MapPin, Globe, Clock, Star, ArrowLeft, Award, Loader2, Monitor, FileText, BadgeCheck } from "lucide-react";
 import Button from "../ui/Button";
 import apiClient from "../api/client";
 import { createConversation } from "../store/chatSlice";
@@ -127,8 +127,11 @@ function ViewProfilePage() {
           {/* User Info */}
           <div className="flex-1">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-              <h1 className="font-family-poppins text-2xl font-bold text-black">
+              <h1 className="font-family-poppins text-2xl font-bold text-black flex items-center gap-2">
                 {user.name}
+                {user.verificationStatus === "verified" && (
+                  <BadgeCheck className="text-teal shrink-0" size={20} aria-label="Verified teacher" />
+                )}
               </h1>
               <Button
                 variant="primary"

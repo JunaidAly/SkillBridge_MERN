@@ -176,6 +176,24 @@ export const removeCertification = createAsyncThunk(
   }
 );
 
+// Submit teacher verification documents
+export const submitVerification = createAsyncThunk(
+  'profile/submitVerification',
+  async (files, { rejectWithValue }) => {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append('docs', file));
+      const res = await apiClient.post('/verification/submit', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.data;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to submit verification documents';
+      return rejectWithValue(message);
+    }
+  }
+);
+
 const profileSlice = createSlice({
   name: 'profile',
   initialState,
@@ -289,6 +307,24 @@ const profileSlice = createSlice({
         if (state.profile) {
           state.profile.certifications = action.payload;
         }
+      })
+      // Submit verification
+      .addCase(submitVerification.pending, (state) => {
+        state.updateLoading = true;
+        state.updateError = null;
+      })
+      .addCase(submitVerification.fulfilled, (state, action) => {
+        state.updateLoading = false;
+        if (state.profile) {
+          state.profile.verificationStatus = action.payload.verificationStatus;
+          state.profile.verificationDocs = action.payload.verificationDocs;
+          state.profile.verificationSubmittedAt = action.payload.verificationSubmittedAt;
+          state.profile.verificationRejectionReason = undefined;
+        }
+      })
+      .addCase(submitVerification.rejected, (state, action) => {
+        state.updateLoading = false;
+        state.updateError = action.payload;
       })
       // Clear profile on logout
       .addCase(logout, (state) => {

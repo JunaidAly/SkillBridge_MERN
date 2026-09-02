@@ -10,8 +10,14 @@ import ViewProfilePage from "./pages/ViewProfilePage";
 import ChatPage from "./pages/ChatPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import CreditsPage from "./pages/CreditsPage";
+import PurchaseHistory from "./pages/PurchaseHistory";
+import AdminTransactions from "./pages/AdminTransactions";
+import AdminUsers from "./pages/AdminUsers";
+import AdminAuditLog from "./pages/AdminAuditLog";
+import AdminVerifications from "./pages/AdminVerifications";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
+import AdminRoute from "./components/AdminRoute";
 
 const router = createBrowserRouter([
   {
@@ -72,6 +78,42 @@ const router = createBrowserRouter([
       {
         path: "/credits",
         element: <CreditsPage />,
+      },
+      {
+        path: "/credits/history",
+        element: <PurchaseHistory />,
+      },
+      {
+        path: "/admin/transactions",
+        element: (
+          <AdminRoute>
+            <AdminTransactions />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/users",
+        element: (
+          <AdminRoute>
+            <AdminUsers />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/audit-log",
+        element: (
+          <AdminRoute>
+            <AdminAuditLog />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/verifications",
+        element: (
+          <AdminRoute>
+            <AdminVerifications />
+          </AdminRoute>
+        ),
       },
     ],
   },

@@ -7,6 +7,44 @@ export const getPackages = async (req, res) => {
   res.json({ packages: listPackages() });
 };
 
+const VISIBLE_STATUSES = ['completed', 'failed', 'refunded'];
+const MAX_PAGE_LIMIT = 50;
+const DEFAULT_PAGE_LIMIT = 10;
+
+export const getMyTransactions = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_LIMIT));
+
+    const filter = { user: req.user.userId, status: { $in: VISIBLE_STATUSES } };
+
+    const [transactions, totalCount] = await Promise.all([
+      Transaction.find(filter)
+        .select('creditsGranted amountPaid currency status createdAt')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Transaction.countDocuments(filter),
+    ]);
+
+    res.json({
+      transactions: transactions.map((t) => ({
+        id: t._id.toString(),
+        creditsGranted: t.creditsGranted,
+        amountPaid: t.amountPaid,
+        currency: t.currency,
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
+      page,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+      totalCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const createCheckout = async (req, res) => {
   try {
     const { priceId } = req.body;

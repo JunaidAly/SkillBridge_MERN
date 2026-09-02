@@ -95,6 +95,23 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user',
     },
+    verificationStatus: {
+      type: String,
+      enum: ['unverified', 'pending', 'verified', 'rejected'],
+      default: 'unverified',
+    },
+    verificationDocs: [{
+      type: String,
+    }],
+    verificationSubmittedAt: {
+      type: Date,
+    },
+    verificationReviewedAt: {
+      type: Date,
+    },
+    verificationRejectionReason: {
+      type: String,
+    },
     bio: {
       type: String,
       maxlength: 500,

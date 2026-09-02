@@ -50,7 +50,7 @@ router.post('/register', async (req, res) => {
       success: true,
       requiresVerification: true,
       email: user.email,
-      message: 'Verification code sent to your email',
+      message: `Verification code sent to your email`,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

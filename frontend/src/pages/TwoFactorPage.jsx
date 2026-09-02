@@ -8,7 +8,7 @@ function TwoFactorPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { loading, error, token } = useSelector((state) => state.auth);
+  const { loading, error, token, user } = useSelector((state) => state.auth);
   
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [email, setEmail] = useState("");
@@ -31,9 +31,9 @@ function TwoFactorPage() {
 
   useEffect(() => {
     if (token) {
-      navigate("/dashboard", { replace: true });
+      navigate(user?.role === "admin" ? "/admin/transactions" : "/dashboard", { replace: true });
     }
-  }, [token, navigate]);
+  }, [token, user, navigate]);
 
   const handleChange = (index, value) => {
     // Only allow numbers

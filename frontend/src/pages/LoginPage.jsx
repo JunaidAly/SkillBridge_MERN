@@ -12,9 +12,10 @@ function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showSuccess, showError, showInfo } = useToast();
-  const { loading, error, token, verificationEmail } = useSelector((state) => state.auth);
+  const { loading, error, token, user, verificationEmail } = useSelector((state) => state.auth);
   const [formData, setFormData] = useState({ email: "", password: "" });
-  const redirectPath = location.state?.from?.pathname || "/dashboard";
+  const defaultPath = user?.role === "admin" ? "/admin/transactions" : "/dashboard";
+  const redirectPath = location.state?.from?.pathname || defaultPath;
 
   useEffect(() => {
     if (token) {

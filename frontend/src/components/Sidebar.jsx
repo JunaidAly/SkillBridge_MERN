@@ -1,15 +1,25 @@
 import { useState } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X, Receipt, ShieldCheck, Users, ScrollText, BadgeCheck } from "lucide-react";
 import { logout } from "../store/authSlice";
 
 const navItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Profile", path: "/profile", icon: CircleUserRound },
   { name: "Credits", path: "/credits", icon: CreditCard },
+  { name: "Purchase History", path: "/credits/history", icon: Receipt },
   { name: "Chat & Schedule", path: "/chat", icon: MessageSquare },
   { name: "Feedback", path: "/feedback", icon: MessageCircle },
+];
+
+// Admin accounts only manage the platform - they don't teach/learn/chat, so
+// they get their own nav instead of the end-user nav with admin links tacked on.
+const adminNavItems = [
+  { name: "Revenue", path: "/admin/transactions", icon: ShieldCheck },
+  { name: "User Management", path: "/admin/users", icon: Users },
+  { name: "Verifications", path: "/admin/verifications", icon: BadgeCheck },
+  { name: "Audit Log", path: "/admin/audit-log", icon: ScrollText },
 ];
 
 function Sidebar() {
@@ -17,6 +27,8 @@ function Sidebar() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const user = useSelector((state) => state.auth.user);
+  const items = user?.role === "admin" ? adminNavItems : navItems;
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const closeSidebar = () => setIsOpen(false);
@@ -74,7 +86,7 @@ function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 px-4">
           <ul className="space-y-2">
-            {navItems.map((item) => {
+            {items.map((item) => {
               const isActive =
                 location.pathname === item.path ||
                 (item.path === "/profile" && location.pathname.startsWith("/profile/"));

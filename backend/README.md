@@ -98,3 +98,7 @@ backend/
 
 Make sure MongoDB is running locally or provide a MongoDB Atlas connection string in your `.env` file.
 
+## Creating the first admin
+
+There's no public signup path to the `admin` role. To promote an existing registered user to admin, run `node scripts/createAdmin.js --email=you@example.com` (or run it with no args and it will prompt for the email). This is a local CLI script only - it is never exposed as an HTTP route. Once you have one admin, further admins can be promoted from the in-app User Management page.
+

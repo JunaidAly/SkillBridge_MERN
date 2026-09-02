@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/admin.js';
 import {
   getMyRecommendations,
   trainModels,
@@ -20,7 +21,7 @@ router.get('/me', authenticateToken, getMyRecommendations);
  * @desc    Trigger model training (Admin only)
  * @access  Private (Admin)
  */
-router.post('/train', authenticateToken, trainModels);
+router.post('/train', authenticateToken, requireAdmin, trainModels);
 
 /**
  * @route   GET /api/recommendations/health

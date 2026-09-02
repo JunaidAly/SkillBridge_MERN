@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Mail, MapPin, Globe, Clock, Star, Pencil, Plus, X, Award, Loader2, FileText } from "lucide-react";
+import { Mail, MapPin, Globe, Clock, Star, Pencil, Plus, X, Award, Loader2, FileText, ShieldCheck, Upload } from "lucide-react";
 import Button from "../ui/Button";
+import Badge from "../ui/Badge";
 import EditProfileModal from "../components/Modal/EditProfileModal";
 import AddSkillModal from "../components/Modal/AddSkillModal";
 import AddCertificationModal from "../components/Modal/AddCertificationModal";
 import apiClient from "../api/client";
 import { downloadBlob } from "../utils/downloadBlob";
+import { useToast } from "../ui/Toast";
 import {
   fetchProfile,
   removeTeachingSkill,
@@ -14,10 +16,12 @@ import {
   removeCertification,
   updateLearningProgress,
   addCertification,
+  submitVerification,
 } from "../store/profileSlice";
 
 function ProfilePage() {
   const dispatch = useDispatch();
+  const { success: showSuccess, error: showError } = useToast();
   const { profile, loading, error } = useSelector((state) => state.profile);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -26,6 +30,8 @@ function ProfilePage() {
   const [isAddCertificationOpen, setIsAddCertificationOpen] = useState(false);
   const [isEditCertificationOpen, setIsEditCertificationOpen] = useState(false);
   const [editingCert, setEditingCert] = useState(null);
+  const [verificationFiles, setVerificationFiles] = useState([]);
+  const [submittingVerification, setSubmittingVerification] = useState(false);
 
   useEffect(() => {
     dispatch(fetchProfile());
@@ -45,6 +51,20 @@ function ProfilePage() {
 
   const handleRemoveCertification = (certId) => {
     dispatch(removeCertification(certId));
+  };
+
+  const handleSubmitVerification = async () => {
+    if (verificationFiles.length === 0) return;
+    setSubmittingVerification(true);
+    try {
+      await dispatch(submitVerification(verificationFiles)).unwrap();
+      showSuccess("Verification documents submitted. An admin will review them soon.");
+      setVerificationFiles([]);
+    } catch (err) {
+      showError(err || "Failed to submit verification documents.");
+    } finally {
+      setSubmittingVerification(false);
+    }
   };
 
   const handleOpenEditCertification = (cert) => {
@@ -418,6 +438,64 @@ function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* Teacher Verification Section */}
+      {profile.skillsTeaching?.length > 0 && (
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="text-teal" size={20} />
+              <h2 className="font-family-poppins text-lg font-semibold text-black">
+                Teacher Verification
+              </h2>
+            </div>
+            <Badge status={profile.verificationStatus || "unverified"} />
+          </div>
+
+          {profile.verificationStatus === "rejected" && profile.verificationRejectionReason && (
+            <p className="font-family-poppins text-sm text-red bg-red/5 border border-red/20 rounded-lg p-3 mb-4">
+              Rejected: {profile.verificationRejectionReason}
+            </p>
+          )}
+
+          {profile.verificationStatus === "pending" ? (
+            <p className="font-family-poppins text-sm text-gray">
+              Your documents are submitted and awaiting admin review.
+            </p>
+          ) : profile.verificationStatus === "verified" ? (
+            <p className="font-family-poppins text-sm text-gray">
+              You're a verified teacher. Verified profiles are shown with a badge.
+            </p>
+          ) : (
+            <div>
+              <p className="font-family-poppins text-sm text-gray mb-3">
+                Upload proof of expertise (certificates, ID, portfolio) to get a verified badge on your profile.
+              </p>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <label className="flex items-center gap-2 px-4 py-2 border border-[#D0D0D0] rounded-lg cursor-pointer hover:bg-gray-50 font-family-poppins text-sm text-black">
+                  <Upload size={16} />
+                  {verificationFiles.length > 0 ? `${verificationFiles.length} file(s) selected` : "Choose files"}
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => setVerificationFiles(Array.from(e.target.files || []))}
+                  />
+                </label>
+                <Button
+                  variant="primary"
+                  onClick={handleSubmitVerification}
+                  disabled={verificationFiles.length === 0 || submittingVerification}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submittingVerification ? "Submitting..." : "Submit for Verification"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modals */}
       <EditProfileModal

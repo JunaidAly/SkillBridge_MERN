@@ -49,6 +49,20 @@ const certificationStorage = new CloudinaryStorage({
   },
 });
 
+// Storage for teacher verification documents
+const verificationStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    const isPdf = file.mimetype === 'application/pdf';
+    return {
+      folder: 'skillbridge/verifications',
+      resource_type: isPdf ? 'raw' : 'auto',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'],
+      public_id: `${Date.now()}-${req.user?.userId || 'doc'}`,
+    };
+  },
+});
+
 // Multer upload instances
 export const uploadAvatar = multer({
   storage: avatarStorage,
@@ -57,6 +71,11 @@ export const uploadAvatar = multer({
 
 export const uploadCertification = multer({
   storage: certificationStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+});
+
+export const uploadVerificationDoc = multer({
+  storage: verificationStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 

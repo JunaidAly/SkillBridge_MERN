@@ -118,14 +118,7 @@ export const getMyRecommendations = async (req, res) => {
  */
 export const trainModels = async (req, res) => {
   try {
-    // Validate user is admin
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only admins can trigger model training'
-      });
-    }
-
+    // Admin check happens in requireAdmin middleware (route-level)
     const forceRetrain = req.body.force_retrain || false;
 
     // Call Python recommendation service

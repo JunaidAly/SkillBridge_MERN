@@ -29,6 +29,11 @@ router.get('/me', authenticateToken, async (req, res) => {
         certifications: user.certifications,
         stats: user.stats,
         createdAt: user.createdAt,
+        verificationStatus: user.verificationStatus,
+        verificationDocs: user.verificationDocs,
+        verificationSubmittedAt: user.verificationSubmittedAt,
+        verificationReviewedAt: user.verificationReviewedAt,
+        verificationRejectionReason: user.verificationRejectionReason,
       },
     });
   } catch (error) {
@@ -560,6 +565,7 @@ router.get('/:userId', authenticateToken, async (req, res) => {
         skillsLearning: user.skillsLearning,
         certifications: user.certifications,
         stats: user.stats,
+        verificationStatus: user.verificationStatus,
       },
     });
   } catch (error) {

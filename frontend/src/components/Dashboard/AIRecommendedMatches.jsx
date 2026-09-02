@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, Globe } from "lucide-react";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, Globe, BadgeCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import Button from "../../ui/Button";
@@ -152,8 +152,11 @@ function AIRecommendedMatches() {
 
                   {/* Info */}
                   <div className="flex-1">
-                    <h3 className="font-family-poppins text-lg font-semibold text-black">
+                    <h3 className="font-family-poppins text-lg font-semibold text-black flex items-center gap-1.5">
                       {user.name}
+                      {user.verificationStatus === "verified" && (
+                        <BadgeCheck className="text-teal shrink-0" size={16} aria-label="Verified teacher" />
+                      )}
                     </h3>
                     <p className="font-family-poppins text-sm text-gray mb-2">
                       {primarySkill}

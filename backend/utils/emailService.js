@@ -1,17 +1,20 @@
 import nodemailer from 'nodemailer';
 
 export async function sendVerificationCode(email, code) {
+  // Always print the code to the terminal for local testing, regardless of
+  // whether SMTP is configured or the email actually sends successfully.
+  console.log('='.repeat(50));
+  console.log(`🔑 2FA Verification Code for ${email}: ${code}`);
+  console.log('='.repeat(50));
+
   // Check if SMTP is configured
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
   const smtpFrom = process.env.SMTP_FROM || smtpUser;
 
-  // If SMTP is not configured, log to console (for development)
+  // If SMTP is not configured, we've already logged the code above - nothing more to do.
   if (!smtpHost || !smtpUser || !smtpPass) {
-    console.log('='.repeat(50));
-    console.log(`📧 Verification Code for ${email}: ${code}`);
-    console.log('='.repeat(50));
     console.log('⚠️  SMTP not configured. Add SMTP_HOST, SMTP_USER, and SMTP_PASS to .env to send emails.');
     return true;
   }
@@ -65,11 +68,7 @@ export async function sendVerificationCode(email, code) {
     console.error('❌ Error sending verification email:', error.message);
     console.error('❌ Error code:', error.code);
     console.error('❌ Error details:', error);
-    // Fallback to console logging if email fails
-    console.log('='.repeat(50));
-    console.log(`📧 Verification Code for ${email}: ${code}`);
-    console.log('='.repeat(50));
-    console.log('⚠️  Email sending failed. Please check SMTP settings.');
+    console.log('⚠️  Email sending failed. Please check SMTP settings. (Code was already printed above.)');
     return true; // Return true to not block the registration/login flow
   }
 }
