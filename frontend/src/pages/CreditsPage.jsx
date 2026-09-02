@@ -38,13 +38,12 @@ function CreditsPage() {
 
       {/* Transactions and Buy Credits */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-2">
           <RecentTransactions transactions={transactions} loading={loading} />
         </div>
-        {/* Buy Credits For Future Module*/}
-        {/* <div>
+        <div>
           <BuyCredits />
-        </div> */}
+        </div>
       </div>
     </div>
   );
