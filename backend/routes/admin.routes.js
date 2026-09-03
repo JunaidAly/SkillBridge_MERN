@@ -9,6 +9,8 @@ import {
   getAuditLog,
   getVerifications,
   reviewVerification,
+  getRefundRequests,
+  reviewRefundRequest,
 } from '../controllers/admin.controller.js';
 
 const router = express.Router();
@@ -20,5 +22,7 @@ router.patch('/users/:userId/role', authenticateToken, requireAdmin, updateUserR
 router.get('/audit-log', authenticateToken, requireAdmin, getAuditLog);
 router.get('/verifications', authenticateToken, requireAdmin, getVerifications);
 router.patch('/verifications/:userId', authenticateToken, requireAdmin, reviewVerification);
+router.get('/refund-requests', authenticateToken, requireAdmin, getRefundRequests);
+router.patch('/refund-requests/:id', authenticateToken, requireAdmin, reviewRefundRequest);
 
 export default router;

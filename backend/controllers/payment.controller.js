@@ -2,6 +2,7 @@ import paddle from '../config/paddle.js';
 import { getCreditsForPriceId, listPackages } from '../config/creditPacks.js';
 import Transaction from '../models/Transaction.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
+import RefundRequest from '../models/RefundRequest.js';
 
 export const getPackages = async (req, res) => {
   res.json({ packages: listPackages() });
@@ -27,6 +28,18 @@ export const getMyTransactions = async (req, res) => {
       Transaction.countDocuments(filter),
     ]);
 
+    const transactionIds = transactions.map((t) => t._id);
+    const refundRequests = await RefundRequest.find({ transaction: { $in: transactionIds } })
+      .select('transaction status')
+      .sort({ createdAt: -1 });
+    const refundStatusByTransaction = {};
+    refundRequests.forEach((r) => {
+      // Keep the most recent one per transaction (already sorted desc above)
+      if (!(r.transaction.toString() in refundStatusByTransaction)) {
+        refundStatusByTransaction[r.transaction.toString()] = r.status;
+      }
+    });
+
     res.json({
       transactions: transactions.map((t) => ({
         id: t._id.toString(),
@@ -35,6 +48,7 @@ export const getMyTransactions = async (req, res) => {
         currency: t.currency,
         status: t.status,
         createdAt: t.createdAt,
+        refundRequestStatus: refundStatusByTransaction[t._id.toString()] || null,
       })),
       page,
       totalPages: Math.max(1, Math.ceil(totalCount / limit)),
@@ -190,7 +204,59 @@ export const handleWebhook = async (req, res) => {
         return res.status(200).json({ received: true, message: 'Event ignored' });
     }
   } catch (error) {
+    // A genuinely unexpected failure (DB write error, etc.) - NOT one of the known/handled
+    // cases above (those all return 200 directly). Return 500 so Paddle retries delivery;
+    // the paddleTransactionId + status check at the top makes a retry safe to reprocess.
     console.error('Error processing Paddle webhook:', error);
-    return res.status(200).json({ received: true, message: 'Processed with errors' });
+    return res.status(500).json({ received: false, message: 'Internal error processing webhook' });
+  }
+};
+
+export const requestRefund = async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+    const { reason } = req.body;
+
+    if (!reason?.trim()) {
+      return res.status(400).json({ message: 'reason is required' });
+    }
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
+
+    if (transaction.user.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+
+    if (transaction.status !== 'completed') {
+      return res.status(400).json({ message: 'Only completed transactions can be refunded' });
+    }
+
+    const existing = await RefundRequest.findOne({
+      transaction: transaction._id,
+      status: { $in: ['pending', 'approved'] },
+    });
+    if (existing) {
+      return res.status(400).json({ message: `A refund request already exists for this transaction (${existing.status}).` });
+    }
+
+    const refundRequest = await RefundRequest.create({
+      user: req.user.userId,
+      transaction: transaction._id,
+      reason: reason.trim(),
+    });
+
+    res.status(201).json({
+      refundRequest: {
+        id: refundRequest._id.toString(),
+        status: refundRequest.status,
+        reason: refundRequest.reason,
+        createdAt: refundRequest.createdAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };

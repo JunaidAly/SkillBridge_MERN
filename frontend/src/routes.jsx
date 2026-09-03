@@ -15,6 +15,7 @@ import AdminTransactions from "./pages/AdminTransactions";
 import AdminUsers from "./pages/AdminUsers";
 import AdminAuditLog from "./pages/AdminAuditLog";
 import AdminVerifications from "./pages/AdminVerifications";
+import AdminRefunds from "./pages/AdminRefunds";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
 import AdminRoute from "./components/AdminRoute";
@@ -112,6 +113,14 @@ const router = createBrowserRouter([
         element: (
           <AdminRoute>
             <AdminVerifications />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/refunds",
+        element: (
+          <AdminRoute>
+            <AdminRefunds />
           </AdminRoute>
         ),
       },

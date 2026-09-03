@@ -1,7 +1,11 @@
+import mongoose from 'mongoose';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 import AdminAuditLog from '../models/AdminAuditLog.js';
+import RefundRequest from '../models/RefundRequest.js';
+import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import { logAdminAction } from '../utils/auditLog.js';
+import paddle from '../config/paddle.js';
 
 const MAX_PAGE_LIMIT = 50;
 const DEFAULT_PAGE_LIMIT = 10;
@@ -342,6 +346,239 @@ export const reviewVerification = async (req, res) => {
         verificationReviewedAt: user.verificationReviewedAt,
         verificationRejectionReason: user.verificationRejectionReason,
       },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getRefundRequests = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_LIMIT));
+    const status = req.query.status;
+
+    const filter = {};
+    if (status) {
+      if (!['pending', 'approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status. Must be one of: pending, approved, rejected' });
+      }
+      filter.status = status;
+    }
+
+    const [requests, totalCount] = await Promise.all([
+      RefundRequest.find(filter)
+        .populate('user', 'name email')
+        .populate('transaction', 'amountPaid currency creditsGranted status createdAt paddleTransactionId')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      RefundRequest.countDocuments(filter),
+    ]);
+
+    res.json({
+      requests: requests.map((r) => ({
+        id: r._id.toString(),
+        status: r.status,
+        reason: r.reason,
+        adminNote: r.adminNote,
+        createdAt: r.createdAt,
+        resolvedAt: r.resolvedAt,
+        user: r.user ? { id: r.user._id.toString(), name: r.user.name, email: r.user.email } : null,
+        transaction: r.transaction
+          ? {
+              id: r.transaction._id.toString(),
+              amountPaid: r.transaction.amountPaid,
+              currency: r.transaction.currency,
+              creditsGranted: r.transaction.creditsGranted,
+              status: r.transaction.status,
+              createdAt: r.transaction.createdAt,
+            }
+          : null,
+      })),
+      page,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+      totalCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const reviewRefundRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, adminNote } = req.body;
+
+    if (!['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({ message: "decision must be 'approved' or 'rejected'" });
+    }
+    if (decision === 'rejected' && !adminNote?.trim()) {
+      return res.status(400).json({ message: 'adminNote is required when rejecting' });
+    }
+
+    const refundRequest = await RefundRequest.findById(id).populate('transaction');
+    if (!refundRequest) {
+      return res.status(404).json({ message: 'Refund request not found' });
+    }
+    if (refundRequest.status !== 'pending') {
+      return res.status(400).json({ message: `This refund request has already been ${refundRequest.status}.` });
+    }
+
+    if (decision === 'rejected') {
+      refundRequest.status = 'rejected';
+      refundRequest.adminNote = adminNote.trim();
+      refundRequest.resolvedAt = new Date();
+      await refundRequest.save();
+
+      await logAdminAction({
+        adminId: req.user.userId,
+        action: 'refund_rejected',
+        targetUserId: refundRequest.user,
+        details: { refundRequestId: refundRequest._id.toString(), adminNote: refundRequest.adminNote },
+      });
+
+      return res.json({
+        refundRequest: {
+          id: refundRequest._id.toString(),
+          status: refundRequest.status,
+          adminNote: refundRequest.adminNote,
+          resolvedAt: refundRequest.resolvedAt,
+        },
+      });
+    }
+
+    // decision === 'approved' - a REAL Paddle refund must succeed before any DB record
+    // is marked approved. Never flip our own status optimistically ahead of Paddle.
+    const transaction = refundRequest.transaction;
+    if (!transaction || !transaction.paddleTransactionId) {
+      return res.status(400).json({ message: 'This refund request is not linked to a valid Paddle transaction.' });
+    }
+
+    let adjustment;
+    try {
+      adjustment = await paddle.adjustments.create({
+        action: 'refund',
+        reason: refundRequest.reason,
+        transactionId: transaction.paddleTransactionId,
+        type: 'full',
+      });
+    } catch (paddleError) {
+      console.error('Paddle refund failed:', paddleError.message);
+      return res.status(502).json({
+        message: `Paddle refund failed: ${paddleError.message}. The refund was NOT approved - nothing was changed.`,
+      });
+    }
+
+    // Paddle has now actually refunded the money - this is the point of no return.
+    // Mark the request approved IMMEDIATELY, before any other write, so that if something
+    // below fails and the admin retries, the pending-status guard above stops us from ever
+    // calling Paddle's refund a second time for the same request.
+    refundRequest.status = 'approved';
+    refundRequest.adminNote = adminNote?.trim() || undefined;
+    refundRequest.resolvedAt = new Date();
+    try {
+      await refundRequest.save();
+    } catch (saveError) {
+      console.error(
+        `CRITICAL: Paddle refund ${adjustment.id} succeeded for RefundRequest ${refundRequest._id} but saving the approved status failed:`,
+        saveError
+      );
+      return res.status(500).json({
+        message: `Paddle refund succeeded (adjustment ${adjustment.id}), but recording the approval failed: ${saveError.message}. Money has already moved - do NOT retry this approval. Manually set RefundRequest ${refundRequest._id} to 'approved' and reconcile the wallet.`,
+      });
+    }
+
+    // Wallet balance, the credit ledger entry, and flipping the transaction to 'refunded' must
+    // all move together - wrap them in a real Mongo transaction so a mid-way failure can't leave
+    // one applied and the other not. The refund itself is already approved and done regardless
+    // of whether this group succeeds; a failure here just needs manual reconciliation, not a
+    // second Paddle call.
+    const creditsToDeduct = transaction.creditsGranted || 0;
+    let creditNote = null;
+    let followUpError = null;
+
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const wallet = await CreditWallet.findOne({ user: refundRequest.user }).session(session);
+
+        if (wallet && creditsToDeduct > 0) {
+          const actualDeduction = Math.min(wallet.balance, creditsToDeduct);
+          wallet.balance = Math.max(0, wallet.balance - creditsToDeduct);
+          wallet.totalSpent += actualDeduction;
+          await wallet.save({ session });
+
+          if (actualDeduction < creditsToDeduct) {
+            creditNote = `User had already spent ${creditsToDeduct - actualDeduction} of the ${creditsToDeduct} refunded credits; balance floored at 0 instead of going negative.`;
+          }
+
+          await CreditTransaction.create(
+            [{
+              user: refundRequest.user,
+              type: 'refund',
+              amount: -actualDeduction,
+              description: `Refund approved for transaction ${transaction._id}`,
+              source: 'admin',
+              transactionRef: transaction._id,
+            }],
+            { session }
+          );
+        }
+
+        transaction.status = 'refunded';
+        await transaction.save({ session });
+      });
+    } catch (txError) {
+      followUpError = txError;
+      console.error(
+        `CRITICAL: Paddle refund ${adjustment.id} and RefundRequest ${refundRequest._id} approval both succeeded, but the wallet/transaction update failed and was rolled back:`,
+        txError
+      );
+    } finally {
+      await session.endSession();
+    }
+
+    if (creditNote) {
+      refundRequest.adminNote = [refundRequest.adminNote, creditNote].filter(Boolean).join(' ');
+      await refundRequest.save().catch((e) => console.error('Failed to save creditNote onto refundRequest:', e.message));
+    }
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: 'refund_approved',
+      targetUserId: refundRequest.user,
+      details: {
+        refundRequestId: refundRequest._id.toString(),
+        transactionId: transaction._id.toString(),
+        paddleAdjustmentId: adjustment.id,
+        paddleAdjustmentStatus: adjustment.status,
+        creditsDeducted: creditsToDeduct,
+        walletSyncFailed: !!followUpError,
+      },
+    });
+
+    if (followUpError) {
+      return res.json({
+        refundRequest: {
+          id: refundRequest._id.toString(),
+          status: refundRequest.status,
+          adminNote: refundRequest.adminNote,
+          resolvedAt: refundRequest.resolvedAt,
+        },
+        paddleAdjustment: { id: adjustment.id, status: adjustment.status },
+        warning: `Paddle refund succeeded and is recorded as approved, but updating the wallet/transaction failed (${followUpError.message}). Please reconcile transaction ${transaction._id} and the user's wallet manually - do not re-approve.`,
+      });
+    }
+
+    res.json({
+      refundRequest: {
+        id: refundRequest._id.toString(),
+        status: refundRequest.status,
+        adminNote: refundRequest.adminNote,
+        resolvedAt: refundRequest.resolvedAt,
+      },
+      paddleAdjustment: { id: adjustment.id, status: adjustment.status },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

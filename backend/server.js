@@ -35,6 +35,8 @@ const io = new SocketIOServer(server, {
   cors: {
     origin: [
       'https://skill-bridge-mern.vercel.app', // Your Vercel frontend URL
+      'https://skill-bridge.me', // Custom domain (apex)
+      'https://www.skill-bridge.me', // Custom domain (www)
       'http://localhost:5173', // Keep for local development
       'http://localhost:3000'
     ],
@@ -49,6 +51,8 @@ app.set('io', io);
 app.use(cors({
   origin: [
     'https://skill-bridge-mern.vercel.app', // Your Vercel frontend URL
+    'https://skill-bridge.me', // Custom domain (apex)
+    'https://www.skill-bridge.me', // Custom domain (www)
     'http://localhost:5173', // Keep for local development
     'http://localhost:3000'
   ],

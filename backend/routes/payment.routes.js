@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
-import { createCheckout, handleWebhook, getPackages, getMyTransactions } from '../controllers/payment.controller.js';
+import { createCheckout, handleWebhook, getPackages, getMyTransactions, requestRefund } from '../controllers/payment.controller.js';
 
 const router = express.Router();
 
@@ -13,5 +13,6 @@ router.post('/webhook', handleWebhook);
 // JWT-protected
 router.post('/checkout', authenticateToken, createCheckout);
 router.get('/transactions', authenticateToken, getMyTransactions);
+router.post('/transactions/:transactionId/refund-request', authenticateToken, requestRefund);
 
 export default router;

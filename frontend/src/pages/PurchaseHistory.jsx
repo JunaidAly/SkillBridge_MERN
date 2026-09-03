@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import apiClient from "../api/client";
 import Pagination from "../ui/Pagination";
 import Badge from "../ui/Badge";
+import { useToast } from "../ui/Toast";
 
 const formatDate = (dateString) =>
   new Date(dateString).toLocaleDateString("en-US", {
@@ -18,11 +19,15 @@ const formatAmount = (amount, currency) =>
   amount == null ? "-" : new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(amount);
 
 function PurchaseHistory() {
+  const { success, error: showError } = useToast();
   const [transactions, setTransactions] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refundOpenFor, setRefundOpenFor] = useState(null);
+  const [refundReason, setRefundReason] = useState("");
+  const [submittingRefund, setSubmittingRefund] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +52,26 @@ function PurchaseHistory() {
       cancelled = true;
     };
   }, [page]);
+
+  const handleSubmitRefund = async (transactionId) => {
+    if (!refundReason.trim()) return;
+    setSubmittingRefund(true);
+    try {
+      await apiClient.post(`/payments/transactions/${transactionId}/refund-request`, {
+        reason: refundReason.trim(),
+      });
+      success("Refund request submitted.");
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === transactionId ? { ...t, refundRequestStatus: "pending" } : t))
+      );
+      setRefundOpenFor(null);
+      setRefundReason("");
+    } catch (err) {
+      showError(err.response?.data?.message || "Unable to submit refund request.");
+    } finally {
+      setSubmittingRefund(false);
+    }
+  };
 
   return (
     <div>
@@ -94,24 +119,66 @@ function PurchaseHistory() {
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Credits</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Amount Paid</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Status</th>
+                    <th className="font-family-poppins text-xs text-gray font-medium pb-3">Refund</th>
                   </tr>
                 </thead>
                 <tbody>
                   {transactions.map((t) => (
-                    <tr key={t.id} className="border-b border-[#F0F0F0] last:border-0">
-                      <td className="font-family-poppins text-sm text-black py-3">
-                        {formatDate(t.createdAt)}
-                      </td>
-                      <td className="font-family-poppins text-sm text-black py-3">
-                        {t.creditsGranted}
-                      </td>
-                      <td className="font-family-poppins text-sm text-black py-3">
-                        {formatAmount(t.amountPaid, t.currency)}
-                      </td>
-                      <td className="py-3">
-                        <Badge status={t.status} />
-                      </td>
-                    </tr>
+                    <Fragment key={t.id}>
+                      <tr className="border-b border-[#F0F0F0] last:border-0">
+                        <td className="font-family-poppins text-sm text-black py-3">
+                          {formatDate(t.createdAt)}
+                        </td>
+                        <td className="font-family-poppins text-sm text-black py-3">
+                          {t.creditsGranted}
+                        </td>
+                        <td className="font-family-poppins text-sm text-black py-3">
+                          {formatAmount(t.amountPaid, t.currency)}
+                        </td>
+                        <td className="py-3">
+                          <Badge status={t.status} />
+                        </td>
+                        <td className="py-3">
+                          {t.status !== "completed" ? (
+                            <span className="text-gray text-xs">-</span>
+                          ) : t.refundRequestStatus ? (
+                            <Badge status={t.refundRequestStatus} />
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setRefundOpenFor(refundOpenFor === t.id ? null : t.id);
+                                setRefundReason("");
+                              }}
+                              className="font-family-poppins text-xs font-semibold text-teal hover:underline"
+                            >
+                              Request Refund
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {refundOpenFor === t.id && (
+                        <tr className="border-b border-[#F0F0F0] last:border-0">
+                          <td colSpan={5} className="pb-4">
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                type="text"
+                                value={refundReason}
+                                onChange={(e) => setRefundReason(e.target.value)}
+                                placeholder="Why are you requesting a refund?"
+                                className="flex-1 font-family-poppins text-sm border border-[#D0D0D0] rounded-lg px-3 py-2 focus:outline-none focus:border-teal"
+                              />
+                              <button
+                                onClick={() => handleSubmitRefund(t.id)}
+                                disabled={!refundReason.trim() || submittingRefund}
+                                className="font-family-poppins text-sm font-semibold text-white bg-teal px-4 py-2 rounded-lg disabled:opacity-50"
+                              >
+                                {submittingRefund ? "Submitting..." : "Submit"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
