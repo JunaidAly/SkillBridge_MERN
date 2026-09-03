@@ -13,6 +13,22 @@ export const fetchMeetings = createAsyncThunk(
   }
 );
 
+export const fetchMeetingById = createAsyncThunk(
+  'meetings/fetchById',
+  async (meetingId, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.get(`/meetings/${meetingId}`);
+      return {
+        ...res.data.meeting,
+        videoRoomName: res.data.videoRoomName,
+        jaasToken: res.data.jaasToken,
+      };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to load meeting');
+    }
+  }
+);
+
 export const fetchMeetingHistory = createAsyncThunk(
   'meetings/fetchHistory',
   async ({ status, limit } = {}, { rejectWithValue }) => {
@@ -91,10 +107,17 @@ const meetingsSlice = createSlice({
     history: [],
     loading: false,
     error: null,
+    currentMeeting: null,
+    currentMeetingLoading: false,
+    currentMeetingError: null,
   },
   reducers: {
     clearMeetingsError: (state) => {
       state.error = null;
+    },
+    clearCurrentMeeting: (state) => {
+      state.currentMeeting = null;
+      state.currentMeetingError = null;
     },
   },
   extraReducers: (builder) => {
@@ -110,6 +133,18 @@ const meetingsSlice = createSlice({
       .addCase(fetchMeetings.rejected, (s, a) => {
         s.loading = false;
         s.error = a.payload;
+      })
+      .addCase(fetchMeetingById.pending, (s) => {
+        s.currentMeetingLoading = true;
+        s.currentMeetingError = null;
+      })
+      .addCase(fetchMeetingById.fulfilled, (s, a) => {
+        s.currentMeetingLoading = false;
+        s.currentMeeting = a.payload;
+      })
+      .addCase(fetchMeetingById.rejected, (s, a) => {
+        s.currentMeetingLoading = false;
+        s.currentMeetingError = a.payload;
       })
       .addCase(fetchMeetingHistory.fulfilled, (s, a) => {
         s.history = a.payload || [];
@@ -133,7 +168,7 @@ const meetingsSlice = createSlice({
   },
 });
 
-export const { clearMeetingsError } = meetingsSlice.actions;
+export const { clearMeetingsError, clearCurrentMeeting } = meetingsSlice.actions;
 export default meetingsSlice.reducer;
 
 

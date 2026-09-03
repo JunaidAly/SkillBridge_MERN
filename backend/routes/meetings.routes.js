@@ -5,6 +5,7 @@ import Meeting from '../models/Meeting.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { sendMeetingInviteEmail } from '../utils/emailService.js';
+import { generateJaasToken } from '../utils/jaasToken.js';
 
 const router = express.Router();
 
@@ -107,6 +108,44 @@ router.get('/history', authenticateToken, async (req, res) => {
       .sort({ startsAt: -1 })
       .limit(Number(limit));
     res.json({ success: true, meetings });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get a single meeting's details (used to join the in-app video call)
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const meeting = await Meeting.findById(req.params.id).populate('participants', 'name email avatar');
+
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+
+    const requester = meeting.participants.find((p) => String(p._id) === String(userId));
+    if (!requester) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+
+    // JaaS room names are namespaced under the App ID: "<AppID>/<room>". Prepend it
+    // here rather than storing it, since the App ID is an app-wide constant, not
+    // per-meeting data.
+    const videoRoomName = `${process.env.JAAS_APP_ID}/${meeting.roomName}`;
+    const isModerator = String(meeting.createdBy) === String(userId);
+
+    let jaasToken;
+    try {
+      jaasToken = generateJaasToken({
+        userId: String(requester._id),
+        name: requester.name,
+        email: requester.email,
+        isModerator,
+      });
+    } catch (tokenError) {
+      console.error('Failed to generate JaaS token:', tokenError.message);
+      return res.status(500).json({ message: 'Unable to generate video call token' });
+    }
+
+    res.json({ success: true, meeting, videoRoomName, jaasToken });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

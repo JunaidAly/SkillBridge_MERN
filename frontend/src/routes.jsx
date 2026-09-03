@@ -16,6 +16,7 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminAuditLog from "./pages/AdminAuditLog";
 import AdminVerifications from "./pages/AdminVerifications";
 import AdminRefunds from "./pages/AdminRefunds";
+import VideoCallPage from "./pages/VideoCallPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
 import AdminRoute from "./components/AdminRoute";
@@ -83,6 +84,10 @@ const router = createBrowserRouter([
       {
         path: "/credits/history",
         element: <PurchaseHistory />,
+      },
+      {
+        path: "/meetings/:id/call",
+        element: <VideoCallPage />,
       },
       {
         path: "/admin/transactions",
