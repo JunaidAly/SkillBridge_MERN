@@ -4,6 +4,7 @@ import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { notifyUser } from '../utils/notify.js';
+import { uploadChatAttachment } from '../config/cloudinary.js';
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.get('/conversations', authenticateToken, async (req, res) => {
       .populate('participants', 'name email avatar')
       .populate({
         path: 'lastMessage',
-        select: 'text sender createdAt readBy',
+        select: 'text sender createdAt readBy messageType metadata',
         populate: { path: 'sender', select: 'name' },
       })
       .sort({ updatedAt: -1 });
@@ -182,6 +183,58 @@ router.post('/conversations/:id/messages', authenticateToken, async (req, res) =
         type: 'new_message',
         title: `New message from ${populated.sender.name}`,
         body: populated.text.length > 140 ? `${populated.text.slice(0, 140)}...` : populated.text,
+        link: '/chat',
+      });
+    }
+
+    res.status(201).json({ success: true, message: populated });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Send a file attachment (image or document) - WhatsApp-style chat attachments.
+router.post('/conversations/:id/attachments', authenticateToken, uploadChatAttachment.single('file'), async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    if (!req.file) return res.status(400).json({ message: 'file is required' });
+
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+    if (!conversation.participants.map(String).includes(String(userId))) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+
+    const message = await Message.create({
+      conversation: conversation._id,
+      sender: userId,
+      messageType: 'attachment',
+      metadata: {
+        url: req.file.path,
+        fileName: req.file.originalname,
+        fileType: req.file.mimetype,
+        fileSize: req.file.size,
+      },
+      readBy: [userId],
+    });
+
+    conversation.lastMessage = message._id;
+    await conversation.save();
+
+    const populated = await Message.findById(message._id).populate('sender', 'name email avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`conv:${conversation._id}`).emit('newMessage', { message: populated });
+    }
+
+    const recipients = conversation.participants.map(String).filter((p) => p !== String(userId));
+    for (const recipientId of recipients) {
+      notifyUser({
+        userId: recipientId,
+        type: 'new_message',
+        title: `New attachment from ${populated.sender.name}`,
+        body: req.file.originalname,
         link: '/chat',
       });
     }

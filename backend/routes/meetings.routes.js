@@ -7,6 +7,7 @@ import User from '../models/User.js';
 import { sendMeetingInviteEmail } from '../utils/emailService.js';
 import { generateJaasToken } from '../utils/jaasToken.js';
 import { notifyUser } from '../utils/notify.js';
+import { getSessionRoles, completeExpiredMeetings } from '../utils/meetingCompletion.js';
 
 const router = express.Router();
 
@@ -15,71 +16,14 @@ function makeJitsiRoomName({ conversationId, startsAt }) {
   return `skillbridge-${conversationId || 'general'}-${ts}`.replace(/[^a-zA-Z0-9-_]/g, '');
 }
 
-// Helper: Clean up expired meetings (mark as completed if past end time)
-async function cleanupExpiredMeetings(userId) {
-  const now = new Date();
-
-  // Find scheduled meetings that have ended (startsAt + duration has passed)
-  const expiredMeetings = await Meeting.find({
-    participants: userId,
-    status: 'scheduled',
-  });
-
-  for (const meeting of expiredMeetings) {
-    const endTime = new Date(meeting.startsAt.getTime() + (meeting.duration || 60) * 60 * 1000);
-    if (now > endTime) {
-      meeting.status = 'completed';
-      await meeting.save();
-
-      // Update user stats for completed meetings
-      await updateUserStatsForMeeting(meeting);
-    }
-  }
-}
-
-// Helper: Update user stats when meeting is completed
-async function updateUserStatsForMeeting(meeting) {
-  if (!meeting.skill) return;
-
-  const teacherId = meeting.sessionType === 'teaching' ? meeting.createdBy :
-    meeting.participants.find(p => String(p) !== String(meeting.createdBy));
-  const learnerId = meeting.sessionType === 'learning' ? meeting.createdBy :
-    meeting.participants.find(p => String(p) !== String(meeting.createdBy));
-
-  // Update teacher's skill sessions count and overall stats
-  if (teacherId) {
-    const teacher = await User.findById(teacherId);
-    if (teacher) {
-      // Update skillsTeaching sessions count
-      const skillIndex = teacher.skillsTeaching.findIndex(
-        s => s.name.toLowerCase() === meeting.skill.toLowerCase()
-      );
-      if (skillIndex >= 0) {
-        teacher.skillsTeaching[skillIndex].sessions += 1;
-      }
-      // Update overall stats
-      teacher.stats.sessionsTaught = (teacher.stats.sessionsTaught || 0) + 1;
-      await teacher.save();
-    }
-  }
-
-  // Update learner's stats
-  if (learnerId) {
-    const learner = await User.findById(learnerId);
-    if (learner) {
-      learner.stats.sessionsLearned = (learner.stats.sessionsLearned || 0) + 1;
-      await learner.save();
-    }
-  }
-}
-
 // List meetings for current user (upcoming first, auto-cleanup expired)
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Clean up expired meetings
-    await cleanupExpiredMeetings(userId);
+    // Complete any meetings whose time has passed (also runs on a schedule -
+    // see jobs/completeMeetings.js - this is just a fast-path for the caller).
+    await completeExpiredMeetings();
 
     // Only return scheduled (upcoming) meetings
     const meetings = await Meeting.find({
@@ -165,7 +109,7 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'sessionType must be "teaching" or "learning"' });
     }
 
-    const other = await User.findById(otherUserId).select('_id');
+    const other = await User.findById(otherUserId).select('_id name');
     if (!other) return res.status(404).json({ message: 'User not found' });
 
     let convId = conversationId;
@@ -175,6 +119,28 @@ router.post('/', authenticateToken, async (req, res) => {
       if (!conv.participants.map(String).includes(String(userId))) {
         return res.status(403).json({ message: 'Not allowed' });
       }
+    }
+
+    // Prevent double-booking: neither party may already have another
+    // scheduled session whose time range overlaps this one.
+    const proposedStart = new Date(startsAt).getTime();
+    const proposedEnd = proposedStart + (duration || 60) * 60 * 1000;
+    const candidateMeetings = await Meeting.find({
+      status: 'scheduled',
+      participants: { $in: [userId, otherUserId] },
+    });
+    const conflict = candidateMeetings.find((m) => {
+      const existStart = m.startsAt.getTime();
+      const existEnd = existStart + (m.duration || 60) * 60 * 1000;
+      return proposedStart < existEnd && existStart < proposedEnd;
+    });
+    if (conflict) {
+      const conflictIsCurrentUser = conflict.participants.map(String).includes(String(userId));
+      return res.status(409).json({
+        message: conflictIsCurrentUser
+          ? 'You already have a session scheduled that overlaps this time slot.'
+          : `${other.name} already has a session scheduled that overlaps this time slot.`,
+      });
     }
 
     const roomName = makeJitsiRoomName({ conversationId: convId, startsAt });
@@ -299,9 +265,7 @@ router.post('/:id/rate', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Meeting already rated' });
     }
 
-    // Determine who the learner is
-    const learnerId = meeting.sessionType === 'learning' ? meeting.createdBy :
-      meeting.participants.find(p => String(p) !== String(meeting.createdBy));
+    const { teacherId, learnerId } = getSessionRoles(meeting);
 
     // Only the learner can rate
     if (String(userId) !== String(learnerId)) {
@@ -313,9 +277,6 @@ router.post('/:id/rate', authenticateToken, async (req, res) => {
 
     // Update teacher's skill rating
     if (meeting.skill) {
-      const teacherId = meeting.sessionType === 'teaching' ? meeting.createdBy :
-        meeting.participants.find(p => String(p) !== String(meeting.createdBy));
-
       const teacher = await User.findById(teacherId);
       if (teacher) {
         const skillIndex = teacher.skillsTeaching.findIndex(
@@ -350,7 +311,10 @@ router.post('/:id/rate', authenticateToken, async (req, res) => {
   }
 });
 
-// Cancel a meeting
+// Cancel a meeting. Credits only ever move once a session completes (see
+// utils/meetingCompletion.js), never at booking time, so a cancelled meeting -
+// which by definition never reaches 'completed' - was never charged for in
+// the first place. There is nothing to refund or reverse here.
 router.post('/:id/cancel', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -367,16 +331,21 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
     }
 
     meeting.status = 'cancelled';
+    meeting.cancelledBy = userId;
+    meeting.cancelledAt = new Date();
     await meeting.save();
 
+    const { teacherId, learnerId } = getSessionRoles(meeting);
     const canceller = await User.findById(userId).select('name');
-    const otherParticipants = meeting.participants.map(String).filter((p) => p !== String(userId));
-    for (const recipientId of otherParticipants) {
+
+    for (const recipientId of [teacherId, learnerId]) {
+      if (!recipientId) continue;
       notifyUser({
         userId: recipientId,
         type: 'meeting_cancelled',
-        title: `${canceller?.name || 'A participant'} cancelled a session`,
-        body: meeting.title,
+        title: `${canceller?.name || 'A participant'} cancelled "${meeting.title}"`,
+        body: 'No credits were charged for this session.',
+        link: '/chat',
       });
     }
 

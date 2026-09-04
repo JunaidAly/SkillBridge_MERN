@@ -60,15 +60,13 @@ function ProtectedRoute({ children }) {
   // Show nothing while checking to prevent flash of redirect
   if (isChecking) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        fontSize: '18px',
-        color: '#666'
-      }}>
-        Loading...
+      <div className="min-h-screen bg-light-bg flex flex-col items-center justify-center gap-4">
+        <img
+          src="/assets/logo.png"
+          alt="SkillBridge"
+          className="h-12 animate-pulse"
+        />
+        <div className="w-8 h-8 border-4 border-light-teal border-t-teal rounded-full animate-spin" />
       </div>
     );
   }

@@ -63,6 +63,33 @@ const verificationStorage = new CloudinaryStorage({
   },
 });
 
+// Cloudinary's `allowed_formats` validation is unreliable for resource_type
+// 'raw' (it rejects legitimate files like .txt with "unknown file format"),
+// so non-image files are validated ourselves via multer's fileFilter below
+// instead, and no allowed_formats is passed for the raw case.
+const CHAT_ATTACHMENT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip'];
+
+// Storage for chat attachments (images, documents, etc.)
+const chatAttachmentStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    const isImage = file.mimetype.startsWith('image/');
+    const original = (file.originalname || 'file').replace(/\.[^/.]+$/, '');
+    const safeBase = original
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60);
+    return {
+      folder: 'skillbridge/chat-attachments',
+      resource_type: isImage ? 'image' : 'raw',
+      ...(isImage ? { allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'] } : {}),
+      public_id: `${Date.now()}-${safeBase || 'file'}`,
+    };
+  },
+});
+
 // Multer upload instances
 export const uploadAvatar = multer({
   storage: avatarStorage,
@@ -77,6 +104,18 @@ export const uploadCertification = multer({
 export const uploadVerificationDoc = multer({
   storage: verificationStorage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+});
+
+export const uploadChatAttachment = multer({
+  storage: chatAttachmentStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  fileFilter: (req, file, cb) => {
+    const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+    if (!CHAT_ATTACHMENT_EXTENSIONS.includes(ext)) {
+      return cb(new Error(`File type .${ext} is not allowed`));
+    }
+    cb(null, true);
+  },
 });
 
 // Helper function to delete file from Cloudinary

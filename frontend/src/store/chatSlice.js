@@ -37,6 +37,25 @@ export const createConversation = createAsyncThunk(
   }
 );
 
+export const sendAttachment = createAsyncThunk(
+  'chat/sendAttachment',
+  async ({ conversationId, file }, { rejectWithValue }) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiClient.post(`/chat/conversations/${conversationId}/attachments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      // The new message also arrives via the socket 'newMessage' broadcast
+      // (the sender is already joined to the conversation room), so no need
+      // to upsert it here too.
+      return res.data.message;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to send attachment');
+    }
+  }
+);
+
 export const markConversationAsRead = createAsyncThunk(
   'chat/markAsRead',
   async (conversationId, { rejectWithValue }) => {

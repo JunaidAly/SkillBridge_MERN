@@ -18,7 +18,9 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
     const meId = user?.id;
     return (conversations || []).map((c) => {
       const other = (c.participants || []).find((p) => String(p._id || p.id) !== String(meId));
-      const lastText = c.lastMessage?.text || "";
+      const lastText = c.lastMessage?.messageType === "attachment"
+        ? `📎 ${c.lastMessage?.metadata?.fileName || "Attachment"}`
+        : c.lastMessage?.text || "";
       const ts = c.lastMessage?.createdAt || c.updatedAt;
       const time = ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
       return {
@@ -65,7 +67,7 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
       </div>
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         {loading ? (
           <ChatListSkeleton />
         ) : (

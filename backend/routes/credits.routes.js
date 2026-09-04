@@ -2,50 +2,10 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { CreditWallet, CreditTransaction } from '../models/Credit.js';
 import User from '../models/User.js';
-import { notifyUser } from '../utils/notify.js';
+import { getOrCreateWallet, notifyIfCrossedLowBalance } from '../utils/wallet.js';
+import { CREDITS_PER_TEACHING_SESSION, CREDITS_PER_LEARNING_SESSION } from '../config/sessionCreditRates.js';
 
 const router = express.Router();
-
-// Credits awarded per session
-const CREDITS_PER_TEACHING_SESSION = 25;
-const CREDITS_PER_LEARNING_SESSION = 25;
-const INITIAL_FREE_CREDITS = 100;
-const LOW_BALANCE_THRESHOLD = 20;
-
-// Only fires the notification the moment a spend crosses the threshold, not
-// on every subsequent spend once the user is already below it.
-function notifyIfCrossedLowBalance(userId, balanceBefore, balanceAfter) {
-  if (balanceBefore >= LOW_BALANCE_THRESHOLD && balanceAfter < LOW_BALANCE_THRESHOLD) {
-    notifyUser({
-      userId,
-      type: 'credit_low_balance',
-      title: 'Your credit balance is running low',
-      body: `You have ${balanceAfter} credits left. Buy more to keep booking sessions.`,
-      link: '/credits',
-    });
-  }
-}
-
-// Get or create user's wallet
-async function getOrCreateWallet(userId) {
-  let wallet = await CreditWallet.findOne({ user: userId });
-  if (!wallet) {
-    wallet = await CreditWallet.create({
-      user: userId,
-      balance: INITIAL_FREE_CREDITS,
-      totalEarned: INITIAL_FREE_CREDITS,
-      totalSpent: 0,
-    });
-    // Record initial bonus transaction
-    await CreditTransaction.create({
-      user: userId,
-      type: 'bonus',
-      amount: INITIAL_FREE_CREDITS,
-      description: 'Welcome bonus credits',
-    });
-  }
-  return wallet;
-}
 
 // Get wallet info and recent transactions
 router.get('/wallet', authenticateToken, async (req, res) => {

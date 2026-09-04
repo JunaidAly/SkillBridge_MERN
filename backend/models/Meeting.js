@@ -79,6 +79,28 @@ const meetingSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    // Set once completion-time credits have been transferred (or explicitly
+    // skipped, e.g. insufficient learner balance) for this meeting, so it's
+    // never processed twice.
+    creditsProcessed: {
+      type: Boolean,
+      default: false,
+    },
+    // Set when credits were NOT transferred at completion despite the session
+    // happening, e.g. the learner's balance was insufficient by then.
+    creditsNote: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );

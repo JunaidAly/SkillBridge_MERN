@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import ChatList from "../components/Chat/ChatList";
 import ChatMessages from "../components/Chat/ChatMessages";
 import SchedulePanel from "../components/Chat/SchedulePanel";
+import ScheduleSessionModal from "../components/Modal/ScheduleSessionModal";
 import { fetchConversations, upsertMessage, updateUnreadCount } from "../store/chatSlice";
 import { getSocket } from "../socket";
 
@@ -14,6 +15,7 @@ function ChatPage() {
   const { user } = useSelector((state) => state.auth);
   const [selectedChat, setSelectedChat] = useState(null);
   const [showMobileChat, setShowMobileChat] = useState(false);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
 
   useEffect(() => {
     dispatch(fetchConversations());
@@ -62,21 +64,30 @@ function ChatPage() {
         ...c,
         name: other?.name || "Conversation",
         avatar: other?.avatar || null,
+        otherUserId: other?._id || other?.id,
       };
     });
   }, [conversations, user]);
 
   useEffect(() => {
-    // If navigating from dashboard with conversationId, select that conversation
-    if (location.state?.conversationId) {
-      const conversation = formattedConversations.find(
-        (c) => c._id === location.state.conversationId
-      );
-      if (conversation) {
-        setSelectedChat(conversation);
-        setShowMobileChat(true);
+    async function selectFromNavigationState() {
+      // If navigating from dashboard with conversationId, select that conversation
+      if (location.state?.conversationId) {
+        const conversation = formattedConversations.find(
+          (c) => c._id === location.state.conversationId
+        );
+        if (conversation) {
+          setSelectedChat(conversation);
+          setShowMobileChat(true);
+          // e.g. from the AI Recommendations "Schedule" button, which creates the
+          // conversation first and asks to jump straight into scheduling.
+          if (location.state?.openSchedule) {
+            setScheduleModalOpen(true);
+          }
+        }
       }
     }
+    selectFromNavigationState();
   }, [location.state, formattedConversations]);
 
   const handleSelectChat = (chat) => {
@@ -89,7 +100,7 @@ function ChatPage() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden h-[calc(100vh-120px)] lg:h-[calc(100vh-64px)]">
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden h-[calc(100vh-120px)] lg:h-[calc(100vh-144px)]">
       <div className="flex h-full">
         {/* Chat List - Hidden on mobile when chat is selected */}
         <div
@@ -110,14 +121,26 @@ function ChatPage() {
             showMobileChat ? "flex" : "hidden md:flex"
           } flex-1`}
         >
-          <ChatMessages chat={selectedChat} onBack={handleBack} />
+          <ChatMessages
+            chat={selectedChat}
+            onBack={handleBack}
+            onScheduleClick={() => setScheduleModalOpen(true)}
+          />
         </div>
 
-        {/* Schedule Panel - Hidden on mobile and tablet */}
+        {/* Schedule Panel - Hidden on mobile and tablet. The schedule action
+            itself is also reachable from the chat header icon above, which
+            works at every screen size. */}
         <div className="hidden lg:flex">
-          <SchedulePanel selectedChat={selectedChat} />
+          <SchedulePanel onScheduleClick={() => setScheduleModalOpen(true)} />
         </div>
       </div>
+
+      <ScheduleSessionModal
+        isOpen={scheduleModalOpen}
+        onClose={() => setScheduleModalOpen(false)}
+        selectedChat={selectedChat}
+      />
     </div>
   );
 }

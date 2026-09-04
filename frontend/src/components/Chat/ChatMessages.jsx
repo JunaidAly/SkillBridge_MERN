@@ -1,19 +1,32 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Phone, Video, MoreVertical, Send, Smile, ArrowLeft, Trash2 } from "lucide-react";
+import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2 } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchMessages, upsertMessage, markConversationAsRead, deleteConversation } from "../../store/chatSlice";
+import { fetchMessages, upsertMessage, markConversationAsRead, deleteConversation, sendAttachment } from "../../store/chatSlice";
 import { getSocket } from "../../socket";
+import { useToast } from "../../ui/Toast";
 import EmojiPicker from "emoji-picker-react";
 
-function ChatMessages({ chat, onBack }) {
+const MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024; // matches backend uploadChatAttachment limit
+
+function formatFileSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ChatMessages({ chat, onBack, onScheduleClick }) {
   const [message, setMessage] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const menuRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
   const dispatch = useDispatch();
+  const toast = useToast();
   const { messagesByConversation } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
 
@@ -86,8 +99,31 @@ function ChatMessages({ chat, onBack }) {
       time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       isOwn: String(m.sender?._id || m.sender?.id) === String(meId),
       read: true,
+      isAttachment: m.messageType === "attachment",
+      attachment: m.messageType === "attachment" ? m.metadata : null,
     }));
   }, [messages, user]);
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow selecting the same file again later
+    if (!file) return;
+
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      toast.error(`File is too large. Max size is ${formatFileSize(MAX_ATTACHMENT_SIZE)}.`);
+      return;
+    }
+
+    setIsUploadingFile(true);
+    try {
+      await dispatch(sendAttachment({ conversationId, file })).unwrap();
+      // The message itself arrives via the socket broadcast.
+    } catch (err) {
+      toast.error(err || "Failed to send attachment");
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
 
   const handleSend = () => {
     if (message.trim()) {
@@ -209,13 +245,10 @@ function ChatMessages({ chat, onBack }) {
           </button> */}
           <button
             className="p-2 hover:bg-gray-100 rounded-lg transition-all"
-            onClick={() => {
-              // If selected chat has an upcoming meeting, SchedulePanel handles it. Here we just open Jitsi with a generated room.
-              const room = `skillbridge-${chat?._id || "general"}-${Date.now()}`;
-              window.open(`https://meet.jit.si/${room}`, "_blank", "noopener,noreferrer");
-            }}
+            onClick={onScheduleClick}
+            aria-label="Schedule session"
           >
-            <Video className="text-gray" size={20} />
+            <CalendarPlus className="text-gray" size={20} />
           </button>
           <div className="relative" ref={menuRef}>
             <button
@@ -240,7 +273,7 @@ function ChatMessages({ chat, onBack }) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
         {displayMessages.map((msg) => (
           <div
             key={msg._id}
@@ -253,7 +286,39 @@ function ChatMessages({ chat, onBack }) {
                   : "bg-white text-black rounded-bl-sm shadow-lg"
               }`}
             >
-              <p className="font-family-poppins text-sm">{msg.text}</p>
+              {msg.isAttachment && msg.attachment ? (
+                msg.attachment.fileType?.startsWith("image/") ? (
+                  <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={msg.attachment.url}
+                      alt={msg.attachment.fileName}
+                      className="max-w-full max-h-64 rounded-lg object-contain"
+                    />
+                  </a>
+                ) : (
+                  <a
+                    href={msg.attachment.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 bg-white/60 rounded-lg p-2 hover:bg-white transition-colors"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-dark-blue/10 flex items-center justify-center shrink-0">
+                      <FileText className="text-dark-blue" size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-family-poppins text-sm text-black truncate max-w-40">
+                        {msg.attachment.fileName}
+                      </p>
+                      <p className="font-family-poppins text-xs text-gray">
+                        {formatFileSize(msg.attachment.fileSize)}
+                      </p>
+                    </div>
+                    <Download className="text-gray shrink-0" size={16} />
+                  </a>
+                )
+              ) : (
+                <p className="font-family-poppins text-sm">{msg.text}</p>
+              )}
               <div
                 className={`flex items-center justify-end gap-1 mt-1 ${
                   msg.isOwn ? "text-white/70" : "text-gray"
@@ -293,6 +358,24 @@ function ChatMessages({ chat, onBack }) {
               </div>
             )}
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploadingFile}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-all disabled:opacity-50"
+            aria-label="Attach file"
+          >
+            {isUploadingFile ? (
+              <Loader2 className="text-gray animate-spin" size={20} />
+            ) : (
+              <Paperclip className="text-gray" size={20} />
+            )}
+          </button>
           <input
             type="text"
             placeholder="Message"

@@ -19,7 +19,7 @@ const messageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ['text', 'meeting_invite', 'system'],
+      enum: ['text', 'meeting_invite', 'system', 'attachment'],
       default: 'text',
     },
     metadata: {

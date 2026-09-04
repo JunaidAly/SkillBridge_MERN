@@ -24,6 +24,7 @@ import Conversation from './models/Conversation.js';
 import Message from './models/Message.js';
 import { setSocketIO, notifyUser } from './utils/notify.js';
 import { startMeetingReminderJob } from './jobs/meetingReminders.js';
+import { startMeetingCompletionJob } from './jobs/completeMeetings.js';
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -190,5 +191,6 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   startMeetingReminderJob();
+  startMeetingCompletionJob();
 });
 

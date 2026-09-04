@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { Bell, Trash2 } from "lucide-react";
 import apiClient from "../../api/client";
 import { getSocket } from "../../socket";
 
@@ -22,6 +22,7 @@ function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const panelRef = useRef(null);
 
   useEffect(() => {
@@ -48,7 +49,10 @@ function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setConfirmingClear(false);
+      return;
+    }
     const handleClickOutside = (e) => {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
         setOpen(false);
@@ -74,6 +78,13 @@ function NotificationBell() {
     apiClient.patch("/notifications/read-all").catch(() => {});
   };
 
+  const handleClearAll = async () => {
+    setNotifications([]);
+    setUnreadCount(0);
+    setConfirmingClear(false);
+    apiClient.delete("/notifications").catch(() => {});
+  };
+
   return (
     <div className="relative" ref={panelRef}>
       <button
@@ -83,27 +94,59 @@ function NotificationBell() {
       >
         <Bell size={22} className="text-black" />
         {unreadCount > 0 && (
-          <span className="absolute top-0.5 right-0.5 min-w-4 h-4 px-1 flex items-center justify-center rounded-full bg-red text-white text-[10px] font-family-poppins font-semibold">
-            {unreadCount > 9 ? "9+" : unreadCount}
+          <span className="absolute top-0.5 right-0.5 flex">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-red opacity-75 animate-ping" />
+            <span className="relative min-w-4 h-4 px-1 flex items-center justify-center rounded-full bg-red text-white text-[10px] font-family-poppins font-semibold">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
           </span>
         )}
       </button>
 
       {open && (
-        <div className="fixed top-16 left-4 right-4 sm:absolute sm:top-full sm:left-auto sm:right-0 sm:mt-2 sm:w-80 bg-white rounded-xl shadow-lg border border-[#E5E5E5] z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E5E5]">
-            <h3 className="font-family-poppins text-sm font-semibold text-black">Notifications</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="font-family-poppins text-xs text-teal hover:underline"
-              >
-                Mark all read
-              </button>
+        <div className="fixed top-16 left-4 right-4 sm:absolute sm:top-full sm:left-auto sm:right-0 sm:mt-2 sm:w-96 bg-white rounded-xl shadow-lg border border-[#E5E5E5] z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E5E5] gap-3">
+            <h3 className="font-family-poppins text-sm font-semibold text-black shrink-0">Notifications</h3>
+            {!confirmingClear ? (
+              <div className="flex items-center gap-3">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllRead}
+                    className="font-family-poppins text-xs text-teal hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={() => setConfirmingClear(true)}
+                    className="flex items-center gap-1 font-family-poppins text-xs text-red hover:underline"
+                  >
+                    <Trash2 size={12} />
+                    Clear
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-family-poppins text-xs text-gray">Clear all?</span>
+                <button
+                  onClick={handleClearAll}
+                  className="font-family-poppins text-xs font-semibold text-red hover:underline"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={() => setConfirmingClear(false)}
+                  className="font-family-poppins text-xs text-gray hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
             )}
           </div>
 
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto custom-scrollbar">
             {loading && (
               <p className="font-family-poppins text-sm text-gray text-center py-8">Loading...</p>
             )}
@@ -125,7 +168,7 @@ function NotificationBell() {
                     className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${!n.read ? "bg-teal" : "bg-transparent"}`}
                   />
                   <span className="min-w-0">
-                    <p className="font-family-poppins text-sm font-medium text-black truncate">
+                    <p className="font-family-poppins text-sm font-medium text-black line-clamp-2">
                       {n.title}
                     </p>
                     {n.body && (

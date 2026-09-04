@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe, BadgeCheck } from "lucide-react";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe, BadgeCheck, CalendarPlus } from "lucide-react";
 import Button from "../../ui/Button";
 import Pagination from "../../ui/Pagination";
 import { createConversation } from "../../store/chatSlice";
@@ -14,8 +14,8 @@ function AIRecommendations() {
   
   const { user } = useSelector((state) => state.auth);
   const { profile } = useSelector((state) => state.profile);
-  const { recommendations, loading, error, method } = useSelector((state) => state.recommendations);
-  const { users } = useSelector((state) => state.users);
+  const { recommendations, loading: recommendationsLoading, error, method } = useSelector((state) => state.recommendations);
+  const { users, loading: usersLoading } = useSelector((state) => state.users);
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
 
@@ -27,16 +27,38 @@ function AIRecommendations() {
   }, [searchParams]);
   const [currentPage, setCurrentPage] = useState(1);
   const [startingChatWith, setStartingChatWith] = useState(null);
+  const [viewMode, setViewMode] = useState("recommended"); // "recommended" | "all"
   const ITEMS_PER_PAGE = 3;
-  
+
   // Create a map of teacher data for quick lookup
   const teacherMap = users.reduce((acc, user) => {
     acc[user.id || user._id] = user;
     return acc;
   }, {});
 
-  // Sort recommendations by match score (highest first)
-  const sortedRecommendations = [...recommendations].sort((a, b) => b.score - a.score);
+  // "All Users" mode normalizes every teaching user into the same shape the
+  // recommendation cards expect, minus an AI score (there isn't one).
+  const allTeachers = users
+    .filter((u) => (u.skillsTeaching || []).length > 0)
+    .map((u) => ({
+      teacher_id: u.id,
+      name: u.name,
+      subjects: (u.skillsTeaching || []).map((s) => s.name),
+      expertise: [],
+      score: null,
+      average_rating: u.stats?.avgRating || 0,
+      reason: null,
+    }));
+
+  const sourceList = viewMode === "recommended" ? recommendations : allTeachers;
+  const loading = viewMode === "recommended" ? recommendationsLoading : usersLoading;
+  const activeError = viewMode === "recommended" ? error : null;
+
+  // Sort recommendations by match score (highest first) - "all" mode has no
+  // score to sort by, so leave it in the order it came in.
+  const sortedRecommendations = viewMode === "recommended"
+    ? [...sourceList].sort((a, b) => b.score - a.score)
+    : sourceList;
 
   // Filter recommendations based on search query and exclude current user
   const filteredRecommendations = sortedRecommendations.filter((teacher) => {
@@ -59,10 +81,10 @@ function AIRecommendations() {
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedRecommendations = filteredRecommendations.slice(startIndex, endIndex);
 
-  // Reset to page 1 when search query changes
+  // Reset to page 1 when search query or view mode changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, viewMode]);
 
   useEffect(() => {
     // Fetch all users for teacher details
@@ -87,6 +109,19 @@ function AIRecommendations() {
     }
   };
 
+  const handleSchedule = async (teacherId) => {
+    try {
+      setStartingChatWith(teacherId);
+      const result = await dispatch(createConversation(teacherId)).unwrap();
+      navigate('/chat', { state: { conversationId: result._id, openSchedule: true } });
+    } catch (error) {
+      console.error('Failed to start scheduling:', error);
+      alert('Failed to start scheduling. Please try again.');
+    } finally {
+      setStartingChatWith(null);
+    }
+  };
+
   // Don't show for users without learning skills
   if (!profile || !profile.skillsLearning || profile.skillsLearning.length === 0) {
     return null;
@@ -101,6 +136,26 @@ function AIRecommendations() {
           <h2 className="font-family-poppins text-xl font-semibold text-black">
             AI Recommended Matches
           </h2>
+        </div>
+
+        {/* View mode toggle */}
+        <div className="inline-flex w-fit rounded-lg bg-light-gray p-1">
+          <button
+            onClick={() => setViewMode("recommended")}
+            className={`px-4 py-1.5 rounded-md font-family-poppins text-sm font-medium transition-all ${
+              viewMode === "recommended" ? "bg-white text-black shadow-sm" : "text-gray"
+            }`}
+          >
+            Recommended
+          </button>
+          <button
+            onClick={() => setViewMode("all")}
+            className={`px-4 py-1.5 rounded-md font-family-poppins text-sm font-medium transition-all ${
+              viewMode === "all" ? "bg-white text-black shadow-sm" : "text-gray"
+            }`}
+          >
+            All Users
+          </button>
         </div>
       </div>
 
@@ -122,19 +177,21 @@ function AIRecommendations() {
       </div>
 
       {/* AI Match Score Badge */}
-      <div className="flex items-center gap-2 mb-6 px-2 py-3 border border-teal bg-light-teal rounded-full">
-        <span className="flex items-center gap-1.5 px-3 py-1.5 ">
-          <Brain className="text-teal" size={14} />
-          <span className="font-family-poppins text-sm font-medium text-black">
-            AI Match Score
+      {viewMode === "recommended" && (
+        <div className="flex items-center gap-2 mb-6 px-2 py-3 border border-teal bg-light-teal rounded-full">
+          <span className="flex items-center gap-1.5 px-3 py-1.5 ">
+            <Brain className="text-teal" size={14} />
+            <span className="font-family-poppins text-sm font-medium text-black">
+              AI Match Score
+            </span>
           </span>
-        </span>
-        <span className="font-family-poppins text-sm text-gray">
-          {method === 'content-based' && 'Based on Skills | Ratings | Feedbacks'}
-          {method === 'collaborative' && 'Based on Similar Students'}
-          {method === 'hybrid' && 'Based on Skills & Similar Students'}
-        </span>
-      </div>
+          <span className="font-family-poppins text-sm text-gray">
+            {method === 'content-based' && 'Based on Skills | Ratings | Feedbacks'}
+            {method === 'collaborative' && 'Based on Similar Students'}
+            {method === 'hybrid' && 'Based on Skills & Similar Students'}
+          </span>
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && (
@@ -144,7 +201,7 @@ function AIRecommendations() {
       )}
 
       {/* Error State */}
-      {error && !loading && (
+      {activeError && !loading && (
         <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
           <div className="flex-1">
@@ -152,7 +209,7 @@ function AIRecommendations() {
               AI Recommendations Temporarily Unavailable
             </p>
             <p className="font-family-poppins text-sm text-amber-700 mt-1">
-              {error}
+              {activeError}
             </p>
             <p className="font-family-poppins text-sm text-amber-600 mt-2">
               💡 In the meantime, you can browse teachers manually or contact support.
@@ -162,16 +219,20 @@ function AIRecommendations() {
       )}
 
       {/* Empty State */}
-      {!loading && !error && filteredRecommendations.length === 0 && (
+      {!loading && !activeError && filteredRecommendations.length === 0 && (
         <div className="text-center py-12">
           <p className="font-family-poppins text-gray">
-            {searchQuery ? "No teachers found matching your search." : "No recommendations available yet."}
+            {searchQuery
+              ? "No teachers found matching your search."
+              : viewMode === "recommended"
+              ? "No recommendations available yet."
+              : "No teachers available yet."}
           </p>
         </div>
       )}
 
       {/* Match Cards */}
-      {!loading && !error && filteredRecommendations.length > 0 && (
+      {!loading && !activeError && filteredRecommendations.length > 0 && (
         <>
           <div className="space-y-4">
             {paginatedRecommendations.map((teacher) => {
@@ -217,12 +278,14 @@ function AIRecommendations() {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
                       
                       {/* AI Match Score */}
-                      <span className="flex items-center gap-1">
-                        <Brain className="text-teal" size={14} />
-                        <span className="font-family-poppins text-teal font-medium">
-                          {Math.round(teacher.score)}% Match
+                      {teacher.score !== null && (
+                        <span className="flex items-center gap-1">
+                          <Brain className="text-teal" size={14} />
+                          <span className="font-family-poppins text-teal font-medium">
+                            {Math.round(teacher.score)}% Match
+                          </span>
                         </span>
-                      </span>
+                      )}
 
                       {/* Sessions Taught */}
                       <span className="flex items-center gap-1">
@@ -286,6 +349,16 @@ function AIRecommendations() {
                   >
                     {startingChatWith === teacher.teacher_id ? 'Starting...' : 'Message'}
                   </Button>
+                  <button
+                    onClick={() => handleSchedule(teacher.teacher_id)}
+                    disabled={startingChatWith === teacher.teacher_id}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg font-family-poppins font-medium text-sm text-white bg-dark-blue hover:opacity-90 transition-all disabled:opacity-50 shrink-0"
+                    aria-label="Schedule session"
+                    title="Schedule session"
+                  >
+                    <CalendarPlus size={16} />
+                    <span className="hidden sm:inline">Schedule</span>
+                  </button>
                 </div>
               </div>
             );
