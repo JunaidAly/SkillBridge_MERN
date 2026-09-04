@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 function Footer() {
     const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);
@@ -42,6 +44,37 @@ function Footer() {
                 >
                   How SkillBridge Works
                 </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Legal */}
+          <div>
+            <h3 className="font-josefin font-semibold text-lg mb-4">Legal</h3>
+            <ul className="space-y-2 font-poppins text-sm">
+              <li>
+                <Link
+                  to="/terms"
+                  className="text-black cursor-pointer hover:text-teal transition-colors"
+                >
+                  Terms & Conditions
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/privacy"
+                  className="text-black cursor-pointer hover:text-teal transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/refund-policy"
+                  className="text-black cursor-pointer hover:text-teal transition-colors"
+                >
+                  Refund & Cancellation Policy
+                </Link>
               </li>
             </ul>
           </div>

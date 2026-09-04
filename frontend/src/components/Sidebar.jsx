@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X, Receipt, ShieldCheck, Users, ScrollText, BadgeCheck, RotateCcw } from "lucide-react";
+import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X, Receipt, ShieldCheck, Users, ScrollText, BadgeCheck, RotateCcw, Banknote } from "lucide-react";
 import { logout } from "../store/authSlice";
 
 const navItems = [
@@ -20,6 +20,7 @@ const adminNavItems = [
   { name: "User Management", path: "/admin/users", icon: Users },
   { name: "Verifications", path: "/admin/verifications", icon: BadgeCheck },
   { name: "Refunds", path: "/admin/refunds", icon: RotateCcw },
+  { name: "Payouts", path: "/admin/payouts", icon: Banknote },
   { name: "Audit Log", path: "/admin/audit-log", icon: ScrollText },
 ];
 

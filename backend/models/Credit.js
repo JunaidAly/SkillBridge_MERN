@@ -9,7 +9,7 @@ const creditTransactionSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['teaching', 'learning', 'purchase', 'bonus', 'refund'],
+      enum: ['teaching', 'learning', 'purchase', 'bonus', 'refund', 'payout_hold', 'payout_reversal'],
       required: true,
     },
     amount: {
@@ -39,6 +39,11 @@ const creditTransactionSchema = new mongoose.Schema(
     transactionRef: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Transaction',
+      default: null,
+    },
+    payoutRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PayoutRequest',
       default: null,
     },
   },

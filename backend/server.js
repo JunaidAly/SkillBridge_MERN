@@ -16,6 +16,7 @@ import feedbackRoutes from './routes/feedback.routes.js';
 import creditsRoutes from './routes/credits.routes.js';
 import recommendationsRoutes from './routes/recommendations.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
+import payoutRoutes from './routes/payout.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import verificationRoutes from './routes/verification.routes.js';
 import Conversation from './models/Conversation.js';
@@ -91,6 +92,7 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/credits', creditsRoutes);
 app.use('/api/recommendations', recommendationsRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/payouts', payoutRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/verification', verificationRoutes);
 

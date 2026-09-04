@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import CreditStats from "../components/Credits/CreditStats";
 import RecentTransactions from "../components/Credits/RecentTransactions";
 import BuyCredits from "../components/Credits/BuyCredits";
+import PayoutSection from "../components/Credits/PayoutSection";
 import { fetchWallet, fetchTransactions } from "../store/creditsSlice";
 
 function CreditsPage() {
@@ -44,6 +45,14 @@ function CreditsPage() {
         <div>
           <BuyCredits />
         </div>
+      </div>
+
+      {/* Teacher Payouts */}
+      <div className="mt-6">
+        <PayoutSection
+          balance={wallet?.balance ?? 0}
+          onBalanceChange={() => dispatch(fetchWallet())}
+        />
       </div>
     </div>
   );

@@ -7,6 +7,8 @@ const VARIANTS = {
   rejected: "bg-red/10 text-red",
   unverified: "bg-gray-200 text-gray",
   approved: "bg-teal/10 text-teal",
+  // Distinct from "approved" (a decision) - "paid" means money actually moved.
+  paid: "bg-blue-100 text-blue-600",
 };
 
 function Badge({ status, label }) {

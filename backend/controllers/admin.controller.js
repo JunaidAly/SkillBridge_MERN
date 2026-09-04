@@ -3,6 +3,7 @@ import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 import AdminAuditLog from '../models/AdminAuditLog.js';
 import RefundRequest from '../models/RefundRequest.js';
+import PayoutRequest from '../models/PayoutRequest.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import { logAdminAction } from '../utils/auditLog.js';
 import paddle from '../config/paddle.js';
@@ -579,6 +580,187 @@ export const reviewRefundRequest = async (req, res) => {
         resolvedAt: refundRequest.resolvedAt,
       },
       paddleAdjustment: { id: adjustment.id, status: adjustment.status },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getPayoutRequests = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_LIMIT));
+    const status = req.query.status;
+
+    const filter = {};
+    if (status) {
+      if (!['pending', 'approved', 'rejected', 'paid'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status. Must be one of: pending, approved, rejected, paid' });
+      }
+      filter.status = status;
+    }
+
+    const [requests, totalCount] = await Promise.all([
+      PayoutRequest.find(filter)
+        .populate('teacher', 'name email')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      PayoutRequest.countDocuments(filter),
+    ]);
+
+    res.json({
+      requests: requests.map((r) => ({
+        id: r._id.toString(),
+        teacher: r.teacher ? { id: r.teacher._id.toString(), name: r.teacher.name, email: r.teacher.email } : null,
+        creditsRequested: r.creditsRequested,
+        amountPKR: r.amountPKR,
+        payoutMethod: r.payoutMethod,
+        payoutDetails: r.payoutDetails,
+        status: r.status,
+        adminNote: r.adminNote,
+        paymentReference: r.paymentReference,
+        createdAt: r.createdAt,
+        resolvedAt: r.resolvedAt,
+      })),
+      page,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+      totalCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const reviewPayoutRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, adminNote } = req.body;
+
+    if (!['approved', 'rejected'].includes(decision)) {
+      return res.status(400).json({ message: "decision must be 'approved' or 'rejected'" });
+    }
+    if (decision === 'rejected' && !adminNote?.trim()) {
+      return res.status(400).json({ message: 'adminNote is required when rejecting' });
+    }
+
+    const payoutRequest = await PayoutRequest.findById(id);
+    if (!payoutRequest) {
+      return res.status(404).json({ message: 'Payout request not found' });
+    }
+    if (payoutRequest.status !== 'pending') {
+      return res.status(400).json({ message: `This payout request has already been ${payoutRequest.status}.` });
+    }
+
+    if (decision === 'approved') {
+      // Approval is only a decision that admin intends to pay - no money has moved
+      // yet and the held credits stay held until mark-paid or a later rejection.
+      payoutRequest.status = 'approved';
+      payoutRequest.adminNote = adminNote?.trim() || undefined;
+      payoutRequest.resolvedAt = new Date();
+      await payoutRequest.save();
+
+      await logAdminAction({
+        adminId: req.user.userId,
+        action: 'payout_approved',
+        targetUserId: payoutRequest.teacher,
+        details: { payoutRequestId: payoutRequest._id.toString(), creditsRequested: payoutRequest.creditsRequested },
+      });
+
+      return res.json({
+        payoutRequest: {
+          id: payoutRequest._id.toString(),
+          status: payoutRequest.status,
+          adminNote: payoutRequest.adminNote,
+          resolvedAt: payoutRequest.resolvedAt,
+        },
+      });
+    }
+
+    // decision === 'rejected' - reverse the hold so the teacher gets their credits back.
+    const wallet = await CreditWallet.findOne({ user: payoutRequest.teacher });
+    if (wallet) {
+      wallet.balance += payoutRequest.creditsRequested;
+      wallet.totalEarned += payoutRequest.creditsRequested;
+      await wallet.save();
+
+      await CreditTransaction.create({
+        user: payoutRequest.teacher,
+        type: 'payout_reversal',
+        amount: payoutRequest.creditsRequested,
+        description: `Payout request rejected - hold reversed (${payoutRequest.creditsRequested} credits)`,
+        source: 'admin',
+        payoutRef: payoutRequest._id,
+      });
+    }
+
+    payoutRequest.status = 'rejected';
+    payoutRequest.adminNote = adminNote.trim();
+    payoutRequest.resolvedAt = new Date();
+    await payoutRequest.save();
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: 'payout_rejected',
+      targetUserId: payoutRequest.teacher,
+      details: {
+        payoutRequestId: payoutRequest._id.toString(),
+        creditsReversed: payoutRequest.creditsRequested,
+        adminNote: payoutRequest.adminNote,
+      },
+    });
+
+    res.json({
+      payoutRequest: {
+        id: payoutRequest._id.toString(),
+        status: payoutRequest.status,
+        adminNote: payoutRequest.adminNote,
+        resolvedAt: payoutRequest.resolvedAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const markPayoutPaid = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentReference } = req.body;
+
+    if (!paymentReference?.trim()) {
+      return res.status(400).json({ message: 'paymentReference is required' });
+    }
+
+    const payoutRequest = await PayoutRequest.findById(id);
+    if (!payoutRequest) {
+      return res.status(404).json({ message: 'Payout request not found' });
+    }
+    if (payoutRequest.status !== 'approved') {
+      return res.status(400).json({
+        message: `Only approved payout requests can be marked paid (current status: ${payoutRequest.status}).`,
+      });
+    }
+
+    payoutRequest.status = 'paid';
+    payoutRequest.paymentReference = paymentReference.trim();
+    payoutRequest.resolvedAt = new Date();
+    await payoutRequest.save();
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: 'payout_marked_paid',
+      targetUserId: payoutRequest.teacher,
+      details: { payoutRequestId: payoutRequest._id.toString(), creditsRequested: payoutRequest.creditsRequested },
+    });
+
+    res.json({
+      payoutRequest: {
+        id: payoutRequest._id.toString(),
+        status: payoutRequest.status,
+        paymentReference: payoutRequest.paymentReference,
+        resolvedAt: payoutRequest.resolvedAt,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

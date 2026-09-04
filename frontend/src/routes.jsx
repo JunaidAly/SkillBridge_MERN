@@ -16,7 +16,11 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminAuditLog from "./pages/AdminAuditLog";
 import AdminVerifications from "./pages/AdminVerifications";
 import AdminRefunds from "./pages/AdminRefunds";
+import AdminPayouts from "./pages/AdminPayouts";
 import VideoCallPage from "./pages/VideoCallPage";
+import TermsPage from "./pages/TermsPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import RefundPolicyPage from "./pages/RefundPolicyPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
 import AdminRoute from "./components/AdminRoute";
@@ -49,6 +53,18 @@ const router = createBrowserRouter([
   {
     path: "/verify",
     element: <TwoFactorPage />,
+  },
+  {
+    path: "/terms",
+    element: <TermsPage />,
+  },
+  {
+    path: "/privacy",
+    element: <PrivacyPage />,
+  },
+  {
+    path: "/refund-policy",
+    element: <RefundPolicyPage />,
   },
   {
     element: (
@@ -126,6 +142,14 @@ const router = createBrowserRouter([
         element: (
           <AdminRoute>
             <AdminRefunds />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/payouts",
+        element: (
+          <AdminRoute>
+            <AdminPayouts />
           </AdminRoute>
         ),
       },
