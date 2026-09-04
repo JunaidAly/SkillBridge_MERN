@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X, Receipt, ShieldCheck, Users, ScrollText, BadgeCheck, RotateCcw, Banknote } from "lucide-react";
 import { logout } from "../store/authSlice";
+import TopbarActions from "./TopbarActions";
 
 const navItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
@@ -48,12 +49,15 @@ function Sidebar() {
         <Link to="/" className="flex items-center gap-2">
           <img src="/assets/logo.png" alt="SkillBridge" className="h-10" />
         </Link>
-        <button
-          onClick={toggleSidebar}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-all"
-        >
-          {isOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <TopbarActions />
+          <button
+            onClick={toggleSidebar}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-all"
+          >
+            {isOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </div>
 
       {/* Overlay */}

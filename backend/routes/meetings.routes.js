@@ -6,6 +6,7 @@ import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { sendMeetingInviteEmail } from '../utils/emailService.js';
 import { generateJaasToken } from '../utils/jaasToken.js';
+import { notifyUser } from '../utils/notify.js';
 
 const router = express.Router();
 
@@ -257,6 +258,16 @@ router.post('/', authenticateToken, async (req, res) => {
         .catch(err => console.error('Failed to send meeting email:', err));
     }
 
+    if (creator?.name) {
+      notifyUser({
+        userId: otherUserId,
+        type: 'meeting_confirmed',
+        title: `${creator.name} scheduled a session with you`,
+        body: `${title.trim()} - ${new Date(startsAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}`,
+        link: `/meetings/${meeting._id}/call`,
+      });
+    }
+
     res.status(201).json({ success: true, meeting: populated });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -357,6 +368,17 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
 
     meeting.status = 'cancelled';
     await meeting.save();
+
+    const canceller = await User.findById(userId).select('name');
+    const otherParticipants = meeting.participants.map(String).filter((p) => p !== String(userId));
+    for (const recipientId of otherParticipants) {
+      notifyUser({
+        userId: recipientId,
+        type: 'meeting_cancelled',
+        title: `${canceller?.name || 'A participant'} cancelled a session`,
+        body: meeting.title,
+      });
+    }
 
     res.json({ success: true, meeting });
   } catch (error) {

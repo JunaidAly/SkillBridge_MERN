@@ -170,3 +170,57 @@ export async function sendMeetingInviteEmail(email, recipientName, meetingDetail
     return true;
   }
 }
+
+// Generic notification email - used by utils/notify.js for every notification
+// type that opts into email delivery. Callers pass their own subject/html/text
+// so each notification type reads as a distinct, specific message.
+export async function sendNotificationEmail(email, subject, html, text) {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    console.log('='.repeat(50));
+    console.log(`🔔 Notification email for ${email}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   ${text}`);
+    console.log('='.repeat(50));
+    console.log('⚠️  SMTP not configured. Add SMTP_HOST, SMTP_USER, and SMTP_PASS to .env to send emails.');
+    return true;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    });
+
+    const info = await transporter.sendMail({
+      from: `"SkillBridge" <${smtpFrom}>`,
+      to: email,
+      subject,
+      html,
+      text,
+    });
+
+    console.log('✅ Notification email sent:', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending notification email:', error.message);
+    console.log('='.repeat(50));
+    console.log(`🔔 Notification email for ${email}`);
+    console.log(`   Subject: ${subject}`);
+    console.log(`   ${text}`);
+    console.log('='.repeat(50));
+    return true; // Never block the caller's primary action over an email failure
+  }
+}

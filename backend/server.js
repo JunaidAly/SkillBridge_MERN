@@ -19,8 +19,11 @@ import paymentRoutes from './routes/payment.routes.js';
 import payoutRoutes from './routes/payout.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import verificationRoutes from './routes/verification.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import Conversation from './models/Conversation.js';
 import Message from './models/Message.js';
+import { setSocketIO, notifyUser } from './utils/notify.js';
+import { startMeetingReminderJob } from './jobs/meetingReminders.js';
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -47,6 +50,7 @@ const io = new SocketIOServer(server, {
 
 // Make io available to routes
 app.set('io', io);
+setSocketIO(io);
 
 // Middleware
 app.use(cors({
@@ -95,6 +99,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/payouts', payoutRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/verification', verificationRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Socket auth
 io.use((socket, next) => {
@@ -117,6 +122,10 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   const userId = socket.user?.userId;
+
+  // Personal room so any backend code can push a notification to this user
+  // regardless of which conversation rooms they're in.
+  if (userId) socket.join(`user:${userId}`);
 
   socket.on('joinConversation', async ({ conversationId }) => {
     if (!conversationId) return;
@@ -145,6 +154,17 @@ io.on('connection', (socket) => {
       const populated = await Message.findById(message._id).populate('sender', 'name email avatar');
       io.to(`conv:${conversationId}`).emit('newMessage', { message: populated });
       if (ack) ack({ ok: true, message: populated });
+
+      const recipients = conv.participants.map(String).filter((p) => p !== String(userId));
+      for (const recipientId of recipients) {
+        notifyUser({
+          userId: recipientId,
+          type: 'new_message',
+          title: `New message from ${populated.sender.name}`,
+          body: populated.text.length > 140 ? `${populated.text.slice(0, 140)}...` : populated.text,
+          link: '/chat',
+        });
+      }
     } catch (err) {
       if (ack) ack({ ok: false, error: err.message });
     }
@@ -169,5 +189,6 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  startMeetingReminderJob();
 });
 

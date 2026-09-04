@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { CreditWallet, CreditTransaction } from '../models/Credit.js';
 import User from '../models/User.js';
+import { notifyUser } from '../utils/notify.js';
 
 const router = express.Router();
 
@@ -9,6 +10,21 @@ const router = express.Router();
 const CREDITS_PER_TEACHING_SESSION = 25;
 const CREDITS_PER_LEARNING_SESSION = 25;
 const INITIAL_FREE_CREDITS = 100;
+const LOW_BALANCE_THRESHOLD = 20;
+
+// Only fires the notification the moment a spend crosses the threshold, not
+// on every subsequent spend once the user is already below it.
+function notifyIfCrossedLowBalance(userId, balanceBefore, balanceAfter) {
+  if (balanceBefore >= LOW_BALANCE_THRESHOLD && balanceAfter < LOW_BALANCE_THRESHOLD) {
+    notifyUser({
+      userId,
+      type: 'credit_low_balance',
+      title: 'Your credit balance is running low',
+      body: `You have ${balanceAfter} credits left. Buy more to keep booking sessions.`,
+      link: '/credits',
+    });
+  }
+}
 
 // Get or create user's wallet
 async function getOrCreateWallet(userId) {
@@ -170,9 +186,11 @@ router.post('/spend/learning', authenticateToken, async (req, res) => {
     }
 
     // Deduct credits for learning
+    const balanceBefore = wallet.balance;
     wallet.balance -= CREDITS_PER_LEARNING_SESSION;
     wallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
     await wallet.save();
+    notifyIfCrossedLowBalance(userId, balanceBefore, wallet.balance);
 
     // Record transaction
     const transaction = await CreditTransaction.create({
@@ -250,12 +268,14 @@ router.post('/process-session', authenticateToken, async (req, res) => {
           balance: otherUserWallet.balance,
         });
       }
+      const otherBalanceBefore = otherUserWallet.balance;
       otherUserWallet.balance -= CREDITS_PER_LEARNING_SESSION;
       otherUserWallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
 
       // Save both wallets
       await currentUserWallet.save();
       await otherUserWallet.save();
+      notifyIfCrossedLowBalance(otherUserId, otherBalanceBefore, otherUserWallet.balance);
 
       // Record transactions for both users
       currentUserTransaction = await CreditTransaction.create({
@@ -286,9 +306,10 @@ router.post('/process-session', authenticateToken, async (req, res) => {
           balance: currentUserWallet.balance,
         });
       }
+      const currentBalanceBefore = currentUserWallet.balance;
       currentUserWallet.balance -= CREDITS_PER_LEARNING_SESSION;
       currentUserWallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
-      
+
       // Teacher gets +25 credits
       otherUserWallet.balance += CREDITS_PER_TEACHING_SESSION;
       otherUserWallet.totalEarned += CREDITS_PER_TEACHING_SESSION;
@@ -296,6 +317,7 @@ router.post('/process-session', authenticateToken, async (req, res) => {
       // Save both wallets
       await currentUserWallet.save();
       await otherUserWallet.save();
+      notifyIfCrossedLowBalance(userId, currentBalanceBefore, currentUserWallet.balance);
 
       // Record transactions for both users
       currentUserTransaction = await CreditTransaction.create({

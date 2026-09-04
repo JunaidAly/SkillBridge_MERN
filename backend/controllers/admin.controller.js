@@ -6,6 +6,16 @@ import RefundRequest from '../models/RefundRequest.js';
 import PayoutRequest from '../models/PayoutRequest.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import { logAdminAction } from '../utils/auditLog.js';
+import { notifyUser } from '../utils/notify.js';
+import {
+  verificationApprovedEmail,
+  verificationRejectedEmail,
+  refundApprovedEmail,
+  refundRejectedEmail,
+  payoutApprovedEmail,
+  payoutRejectedEmail,
+  payoutPaidEmail,
+} from '../utils/notificationEmailTemplates.js';
 import paddle from '../config/paddle.js';
 
 const MAX_PAGE_LIMIT = 50;
@@ -338,6 +348,28 @@ export const reviewVerification = async (req, res) => {
       details: decision === 'rejected' ? { rejectionReason: user.verificationRejectionReason } : null,
     });
 
+    if (decision === 'approved') {
+      notifyUser({
+        userId: user._id,
+        type: 'verification_approved',
+        title: 'Your teacher verification was approved',
+        body: 'You now have a Verified badge on your profile.',
+        link: '/profile',
+        sendEmail: true,
+        emailContent: verificationApprovedEmail({ name: user.name }),
+      });
+    } else {
+      notifyUser({
+        userId: user._id,
+        type: 'verification_rejected',
+        title: 'Your teacher verification was rejected',
+        body: user.verificationRejectionReason,
+        link: '/profile',
+        sendEmail: true,
+        emailContent: verificationRejectedEmail({ name: user.name, reason: user.verificationRejectionReason }),
+      });
+    }
+
     res.json({
       user: {
         id: user._id.toString(),
@@ -418,7 +450,7 @@ export const reviewRefundRequest = async (req, res) => {
       return res.status(400).json({ message: 'adminNote is required when rejecting' });
     }
 
-    const refundRequest = await RefundRequest.findById(id).populate('transaction');
+    const refundRequest = await RefundRequest.findById(id).populate('transaction').populate('user', 'name');
     if (!refundRequest) {
       return res.status(404).json({ message: 'Refund request not found' });
     }
@@ -435,8 +467,18 @@ export const reviewRefundRequest = async (req, res) => {
       await logAdminAction({
         adminId: req.user.userId,
         action: 'refund_rejected',
-        targetUserId: refundRequest.user,
+        targetUserId: refundRequest.user._id,
         details: { refundRequestId: refundRequest._id.toString(), adminNote: refundRequest.adminNote },
+      });
+
+      notifyUser({
+        userId: refundRequest.user._id,
+        type: 'refund_rejected',
+        title: 'Your refund request was rejected',
+        body: refundRequest.adminNote,
+        link: '/credits/history',
+        sendEmail: true,
+        emailContent: refundRejectedEmail({ name: refundRequest.user.name, reason: refundRequest.adminNote }),
       });
 
       return res.json({
@@ -502,7 +544,7 @@ export const reviewRefundRequest = async (req, res) => {
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
-        const wallet = await CreditWallet.findOne({ user: refundRequest.user }).session(session);
+        const wallet = await CreditWallet.findOne({ user: refundRequest.user._id }).session(session);
 
         if (wallet && creditsToDeduct > 0) {
           const actualDeduction = Math.min(wallet.balance, creditsToDeduct);
@@ -516,7 +558,7 @@ export const reviewRefundRequest = async (req, res) => {
 
           await CreditTransaction.create(
             [{
-              user: refundRequest.user,
+              user: refundRequest.user._id,
               type: 'refund',
               amount: -actualDeduction,
               description: `Refund approved for transaction ${transaction._id}`,
@@ -548,7 +590,7 @@ export const reviewRefundRequest = async (req, res) => {
     await logAdminAction({
       adminId: req.user.userId,
       action: 'refund_approved',
-      targetUserId: refundRequest.user,
+      targetUserId: refundRequest.user._id,
       details: {
         refundRequestId: refundRequest._id.toString(),
         transactionId: transaction._id.toString(),
@@ -557,6 +599,21 @@ export const reviewRefundRequest = async (req, res) => {
         creditsDeducted: creditsToDeduct,
         walletSyncFailed: !!followUpError,
       },
+    });
+
+    notifyUser({
+      userId: refundRequest.user._id,
+      type: 'refund_approved',
+      title: 'Your refund was approved',
+      body: `Your refund for transaction ${transaction._id} has been processed via Paddle.`,
+      link: '/credits/history',
+      sendEmail: true,
+      emailContent: refundApprovedEmail({
+        name: refundRequest.user.name,
+        amountPaid: transaction.amountPaid,
+        currency: transaction.currency,
+        creditsGranted: creditsToDeduct,
+      }),
     });
 
     if (followUpError) {
@@ -644,7 +701,7 @@ export const reviewPayoutRequest = async (req, res) => {
       return res.status(400).json({ message: 'adminNote is required when rejecting' });
     }
 
-    const payoutRequest = await PayoutRequest.findById(id);
+    const payoutRequest = await PayoutRequest.findById(id).populate('teacher', 'name');
     if (!payoutRequest) {
       return res.status(404).json({ message: 'Payout request not found' });
     }
@@ -663,8 +720,22 @@ export const reviewPayoutRequest = async (req, res) => {
       await logAdminAction({
         adminId: req.user.userId,
         action: 'payout_approved',
-        targetUserId: payoutRequest.teacher,
+        targetUserId: payoutRequest.teacher._id,
         details: { payoutRequestId: payoutRequest._id.toString(), creditsRequested: payoutRequest.creditsRequested },
+      });
+
+      notifyUser({
+        userId: payoutRequest.teacher._id,
+        type: 'payout_approved',
+        title: 'Your payout request was approved',
+        body: `Your request for ${payoutRequest.creditsRequested} credits (Rs. ${payoutRequest.amountPKR}) was approved and will be paid soon.`,
+        link: '/credits',
+        sendEmail: true,
+        emailContent: payoutApprovedEmail({
+          name: payoutRequest.teacher.name,
+          credits: payoutRequest.creditsRequested,
+          amountPKR: payoutRequest.amountPKR,
+        }),
       });
 
       return res.json({
@@ -678,14 +749,14 @@ export const reviewPayoutRequest = async (req, res) => {
     }
 
     // decision === 'rejected' - reverse the hold so the teacher gets their credits back.
-    const wallet = await CreditWallet.findOne({ user: payoutRequest.teacher });
+    const wallet = await CreditWallet.findOne({ user: payoutRequest.teacher._id });
     if (wallet) {
       wallet.balance += payoutRequest.creditsRequested;
       wallet.totalEarned += payoutRequest.creditsRequested;
       await wallet.save();
 
       await CreditTransaction.create({
-        user: payoutRequest.teacher,
+        user: payoutRequest.teacher._id,
         type: 'payout_reversal',
         amount: payoutRequest.creditsRequested,
         description: `Payout request rejected - hold reversed (${payoutRequest.creditsRequested} credits)`,
@@ -702,12 +773,26 @@ export const reviewPayoutRequest = async (req, res) => {
     await logAdminAction({
       adminId: req.user.userId,
       action: 'payout_rejected',
-      targetUserId: payoutRequest.teacher,
+      targetUserId: payoutRequest.teacher._id,
       details: {
         payoutRequestId: payoutRequest._id.toString(),
         creditsReversed: payoutRequest.creditsRequested,
         adminNote: payoutRequest.adminNote,
       },
+    });
+
+    notifyUser({
+      userId: payoutRequest.teacher._id,
+      type: 'payout_rejected',
+      title: 'Your payout request was rejected',
+      body: payoutRequest.adminNote,
+      link: '/credits',
+      sendEmail: true,
+      emailContent: payoutRejectedEmail({
+        name: payoutRequest.teacher.name,
+        credits: payoutRequest.creditsRequested,
+        reason: payoutRequest.adminNote,
+      }),
     });
 
     res.json({
@@ -732,7 +817,7 @@ export const markPayoutPaid = async (req, res) => {
       return res.status(400).json({ message: 'paymentReference is required' });
     }
 
-    const payoutRequest = await PayoutRequest.findById(id);
+    const payoutRequest = await PayoutRequest.findById(id).populate('teacher', 'name');
     if (!payoutRequest) {
       return res.status(404).json({ message: 'Payout request not found' });
     }
@@ -750,8 +835,24 @@ export const markPayoutPaid = async (req, res) => {
     await logAdminAction({
       adminId: req.user.userId,
       action: 'payout_marked_paid',
-      targetUserId: payoutRequest.teacher,
+      targetUserId: payoutRequest.teacher._id,
       details: { payoutRequestId: payoutRequest._id.toString(), creditsRequested: payoutRequest.creditsRequested },
+    });
+
+    notifyUser({
+      userId: payoutRequest.teacher._id,
+      type: 'payout_paid',
+      title: 'Your payout has been paid',
+      body: `${payoutRequest.creditsRequested} credits (Rs. ${payoutRequest.amountPKR}) sent. Reference: ${payoutRequest.paymentReference}`,
+      link: '/credits',
+      sendEmail: true,
+      emailContent: payoutPaidEmail({
+        name: payoutRequest.teacher.name,
+        credits: payoutRequest.creditsRequested,
+        amountPKR: payoutRequest.amountPKR,
+        paymentReference: payoutRequest.paymentReference,
+        payoutMethod: payoutRequest.payoutMethod,
+      }),
     });
 
     res.json({

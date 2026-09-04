@@ -3,6 +3,7 @@ import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { notifyUser } from '../utils/notify.js';
 
 const router = express.Router();
 
@@ -173,6 +174,17 @@ router.post('/conversations/:id/messages', authenticateToken, async (req, res) =
     await conversation.save();
 
     const populated = await Message.findById(message._id).populate('sender', 'name email avatar');
+
+    const recipients = conversation.participants.map(String).filter((p) => p !== String(userId));
+    for (const recipientId of recipients) {
+      notifyUser({
+        userId: recipientId,
+        type: 'new_message',
+        title: `New message from ${populated.sender.name}`,
+        body: populated.text.length > 140 ? `${populated.text.slice(0, 140)}...` : populated.text,
+        link: '/chat',
+      });
+    }
 
     res.status(201).json({ success: true, message: populated });
   } catch (error) {

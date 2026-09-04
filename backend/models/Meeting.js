@@ -73,6 +73,12 @@ const meetingSchema = new mongoose.Schema(
       max: 5,
       default: null,
     },
+    // Set once the meeting-reminder cron job has notified participants, so it
+    // doesn't send the same reminder again on its next run.
+    reminderSent: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
