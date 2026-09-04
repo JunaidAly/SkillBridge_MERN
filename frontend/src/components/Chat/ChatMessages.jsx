@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2 } from "lucide-react";
+import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMessages, upsertMessage, markConversationAsRead, deleteConversation, sendAttachment } from "../../store/chatSlice";
 import { getSocket } from "../../socket";
@@ -15,7 +15,7 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ChatMessages({ chat, onBack, onScheduleClick }) {
+function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
   const [message, setMessage] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -27,11 +27,16 @@ function ChatMessages({ chat, onBack, onScheduleClick }) {
   const fileInputRef = useRef(null);
   const dispatch = useDispatch();
   const toast = useToast();
-  const { messagesByConversation } = useSelector((state) => state.chat);
+  const { messagesByConversation, messagesLoading } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
 
   const conversationId = chat?._id;
-  const messages = messagesByConversation[conversationId] || [];
+  const rawMessages = messagesByConversation[conversationId];
+  const messages = rawMessages || [];
+  // messagesByConversation only gets a key for this conversation once the
+  // fetch resolves, so its absence (vs. an empty array) tells us whether
+  // we're still waiting on the very first load.
+  const isLoadingMessages = messagesLoading && rawMessages === undefined;
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -198,7 +203,10 @@ function ChatMessages({ chat, onBack, onScheduleClick }) {
 
   if (!chat) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-light-bg">
+      <div className="flex-1 flex flex-col items-center justify-center bg-light-bg min-w-0 gap-3">
+        <div className="w-16 h-16 rounded-full bg-light-teal flex items-center justify-center">
+          <MessageCircle className="text-teal" size={28} />
+        </div>
         <p className="font-family-poppins text-gray">
           Select a conversation to start messaging
         </p>
@@ -207,7 +215,7 @@ function ChatMessages({ chat, onBack, onScheduleClick }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-light-bg h-full">
+    <div className="flex-1 flex flex-col bg-light-bg h-full min-w-0">
       {/* Header */}
       <div className="bg-white px-4 py-3 border-b border-[#E5E5E5] flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -250,6 +258,13 @@ function ChatMessages({ chat, onBack, onScheduleClick }) {
           >
             <CalendarPlus className="text-gray" size={20} />
           </button>
+          <button
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-all"
+            onClick={onOpenSchedulePanel}
+            aria-label="Balance and reminders"
+          >
+            <Wallet className="text-gray" size={20} />
+          </button>
           <div className="relative" ref={menuRef}>
             <button
               className="p-2 hover:bg-gray-100 rounded-lg transition-all"
@@ -274,7 +289,32 @@ function ChatMessages({ chat, onBack, onScheduleClick }) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-        {displayMessages.map((msg) => (
+        {isLoadingMessages && (
+          <div className="space-y-4 animate-pulse">
+            {[
+              { side: "start", width: "w-48" },
+              { side: "end", width: "w-40" },
+              { side: "start", width: "w-56" },
+              { side: "end", width: "w-32" },
+            ].map((bubble, i) => (
+              <div key={i} className={`flex ${bubble.side === "end" ? "justify-end" : "justify-start"}`}>
+                <div className={`h-14 ${bubble.width} rounded-2xl bg-gray-200`} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoadingMessages && displayMessages.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center gap-2 py-12">
+            <div className="w-14 h-14 rounded-full bg-light-teal flex items-center justify-center">
+              <MessageCircle className="text-teal" size={24} />
+            </div>
+            <p className="font-family-poppins text-sm font-medium text-black">No messages yet</p>
+            <p className="font-family-poppins text-xs text-gray">Say hi to start the conversation 👋</p>
+          </div>
+        )}
+
+        {!isLoadingMessages && displayMessages.map((msg) => (
           <div
             key={msg._id}
             className={`flex ${msg.isOwn ? "justify-end" : "justify-start"}`}

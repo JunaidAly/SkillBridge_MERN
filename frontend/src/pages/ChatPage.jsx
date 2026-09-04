@@ -16,6 +16,7 @@ function ChatPage() {
   const [selectedChat, setSelectedChat] = useState(null);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [schedulePanelDrawerOpen, setSchedulePanelDrawerOpen] = useState(false);
 
   useEffect(() => {
     dispatch(fetchConversations());
@@ -119,22 +120,41 @@ function ChatPage() {
         <div
           className={`${
             showMobileChat ? "flex" : "hidden md:flex"
-          } flex-1`}
+          } flex-1 min-w-0`}
         >
           <ChatMessages
             chat={selectedChat}
             onBack={handleBack}
             onScheduleClick={() => setScheduleModalOpen(true)}
+            onOpenSchedulePanel={() => setSchedulePanelDrawerOpen(true)}
           />
         </div>
 
-        {/* Schedule Panel - Hidden on mobile and tablet. The schedule action
-            itself is also reachable from the chat header icon above, which
-            works at every screen size. */}
+        {/* Schedule Panel - persistent column on desktop */}
         <div className="hidden lg:flex">
           <SchedulePanel onScheduleClick={() => setScheduleModalOpen(true)} />
         </div>
       </div>
+
+      {/* Schedule Panel - slide-in drawer below desktop, opened from the
+          chat header's wallet icon, so balance/reminders stay reachable at
+          every screen size instead of just disappearing below lg. */}
+      {schedulePanelDrawerOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+          <div
+            className="absolute inset-0 bg-black/50 modal-overlay-enter"
+            onClick={() => setSchedulePanelDrawerOpen(false)}
+          />
+          <div className="relative w-80 max-w-[85vw] h-full shadow-xl drawer-slide-in">
+            <SchedulePanel
+              onScheduleClick={() => {
+                setSchedulePanelDrawerOpen(false);
+                setScheduleModalOpen(true);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <ScheduleSessionModal
         isOpen={scheduleModalOpen}

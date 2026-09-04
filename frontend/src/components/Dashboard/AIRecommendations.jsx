@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe, BadgeCheck, CalendarPlus } from "lucide-react";
 import Button from "../../ui/Button";
 import Pagination from "../../ui/Pagination";
@@ -11,24 +11,28 @@ import { fetchUsers } from "../../store/usersSlice";
 function AIRecommendations() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  
+
   const { user } = useSelector((state) => state.auth);
   const { profile } = useSelector((state) => state.profile);
   const { recommendations, loading: recommendationsLoading, error, method } = useSelector((state) => state.recommendations);
   const { users, loading: usersLoading } = useSelector((state) => state.users);
-  const [searchParams] = useSearchParams();
-  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
-
-  // Keep in sync when the topbar search navigates here with a new ?search= value
-  // while this page is already mounted.
-  useEffect(() => {
-    const fromUrl = searchParams.get("search");
-    if (fromUrl !== null) setSearchQuery(fromUrl);
-  }, [searchParams]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [startingChatWith, setStartingChatWith] = useState(null);
   const [viewMode, setViewMode] = useState("recommended"); // "recommended" | "all"
+  const hasDefaultedViewMode = useRef(false);
   const ITEMS_PER_PAGE = 3;
+
+  // Land on "All Users" by default for anyone with no learning skills set yet -
+  // "Recommended" would just be permanently empty for them otherwise. Only do
+  // this once, so it doesn't fight a manual tab click later.
+  useEffect(() => {
+    if (hasDefaultedViewMode.current || !profile) return;
+    hasDefaultedViewMode.current = true;
+    if (!profile.skillsLearning || profile.skillsLearning.length === 0) {
+      setViewMode("all");
+    }
+  }, [profile]);
 
   // Create a map of teacher data for quick lookup
   const teacherMap = users.reduce((acc, user) => {
@@ -39,7 +43,7 @@ function AIRecommendations() {
   // "All Users" mode normalizes every teaching user into the same shape the
   // recommendation cards expect, minus an AI score (there isn't one).
   const allTeachers = users
-    .filter((u) => (u.skillsTeaching || []).length > 0)
+    .filter((u) => u.role !== "admin" && (u.skillsTeaching || []).length > 0)
     .map((u) => ({
       teacher_id: u.id,
       name: u.name,
@@ -122,8 +126,9 @@ function AIRecommendations() {
     }
   };
 
-  // Don't show for users without learning skills
-  if (!profile || !profile.skillsLearning || profile.skillsLearning.length === 0) {
+  // Wait for the profile to load before rendering - not a "no learning
+  // skills" gate anymore, since "All Users" browsing works without any.
+  if (!profile) {
     return null;
   }
 
