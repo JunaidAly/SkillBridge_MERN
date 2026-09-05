@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet, Flag, Ban, ShieldCheck, Check, CheckCheck } from "lucide-react";
+import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet, Flag, Ban, ShieldCheck, Check, CheckCheck, Video } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { fetchMessages, upsertMessage, replaceMessage, markConversationAsRead, deleteConversation, sendAttachment } from "../../store/chatSlice";
 import { blockUser, unblockUser, reportUser } from "../../store/profileSlice";
 import { getSocket } from "../../socket";
@@ -9,12 +10,54 @@ import ReportUserModal from "../Modal/ReportUserModal";
 import EmojiPicker from "emoji-picker-react";
 
 const MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024; // matches backend uploadChatAttachment limit
+// Mirrors SchedulePanel.jsx - a call can be joined starting this many minutes
+// before its scheduled start.
+const JOIN_WINDOW_BEFORE_MINUTES = 10;
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const URL_PATTERN = /(https?:\/\/[^\s]+)/g;
+
+// Splits message text on URLs (e.g. the Jitsi join link in a meeting-invite
+// message) and renders them as clickable links, leaving everything else as
+// plain text. The regex has exactly one capturing group, so String.split
+// alternates [text, url, text, url, ...] - odd indices are always the URLs.
+function linkifyText(text) {
+  const parts = text.split(URL_PATTERN);
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline break-all"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {part}
+      </a>
+    ) : (
+      part
+    )
+  );
+}
+
+function getMeetingInviteState(metadata, now) {
+  if (!metadata?.meetingId || !metadata?.startsAt) return null;
+  const startsAtMs = new Date(metadata.startsAt).getTime();
+  const endsAtMs = startsAtMs + (metadata.duration || 60) * 60 * 1000;
+  const joinOpensAtMs = startsAtMs - JOIN_WINDOW_BEFORE_MINUTES * 60 * 1000;
+  return {
+    meetingId: metadata.meetingId,
+    joinUrl: metadata.joinUrl,
+    canJoin: now >= joinOpensAtMs && now <= endsAtMs,
+    isPast: now > endsAtMs,
+  };
 }
 
 function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
@@ -26,11 +69,13 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
   const [showReportModal, setShowReportModal] = useState(false);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [isTogglingBlock, setIsTogglingBlock] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const menuRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const toast = useToast();
   const { messagesByConversation, messagesLoading } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
@@ -108,6 +153,14 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
     };
   }, [conversationId, dispatch, user, chat]);
 
+  // Re-check join-window eligibility periodically so a meeting-invite bubble's
+  // "Join" button enables itself live once the session comes within the join
+  // window, without a page refresh (mirrors SchedulePanel.jsx).
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
@@ -127,9 +180,11 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
         status: isRead ? "read" : isDelivered ? "delivered" : "sent",
         isAttachment: m.messageType === "attachment",
         attachment: m.messageType === "attachment" ? m.metadata : null,
+        isMeetingInvite: m.messageType === "meeting_invite",
+        meetingInvite: m.messageType === "meeting_invite" ? getMeetingInviteState(m.metadata, now) : null,
       };
     });
-  }, [messages, user, otherUserId]);
+  }, [messages, user, otherUserId, now]);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -440,7 +495,24 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
                   </a>
                 )
               ) : (
-                <p className="font-family-poppins text-sm">{msg.text}</p>
+                <p className="font-family-poppins text-sm whitespace-pre-wrap">{linkifyText(msg.text)}</p>
+              )}
+              {msg.isMeetingInvite && msg.meetingInvite && !msg.meetingInvite.isPast && (
+                <button
+                  type="button"
+                  disabled={!msg.meetingInvite.canJoin}
+                  onClick={() => navigate(`/meetings/${msg.meetingInvite.meetingId}/call`)}
+                  className={`mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg font-family-poppins text-sm font-semibold transition-all ${
+                    msg.meetingInvite.canJoin
+                      ? msg.isOwn
+                        ? "bg-white text-teal hover:bg-white/90"
+                        : "bg-teal text-white hover:opacity-90"
+                      : `${msg.isOwn ? "bg-white/20 text-white/70" : "bg-gray-100 text-gray"} cursor-not-allowed`
+                  }`}
+                >
+                  <Video size={16} />
+                  {msg.meetingInvite.canJoin ? "Join Meeting" : `Join opens ${JOIN_WINDOW_BEFORE_MINUTES} min before start`}
+                </button>
               )}
               <div
                 className={`flex items-center justify-end gap-1 mt-1 ${

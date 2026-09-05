@@ -6,6 +6,8 @@ import RefundRequest from '../models/RefundRequest.js';
 import PayoutRequest from '../models/PayoutRequest.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import Report from '../models/Report.js';
+import SessionDispute from '../models/SessionDispute.js';
+import { processCompletedMeetingCredits } from '../utils/meetingCompletion.js';
 import { logAdminAction } from '../utils/auditLog.js';
 import { notifyUser } from '../utils/notify.js';
 import {
@@ -28,6 +30,7 @@ const DEFAULT_ANALYTICS_DAYS = 30;
 // actual User model (rather than hardcoding a role list here).
 const VALID_ROLES = User.schema.path('role').enumValues;
 const VALID_REPORT_STATUSES = Report.schema.path('status').enumValues;
+const VALID_DISPUTE_STATUSES = SessionDispute.schema.path('status').enumValues;
 
 export const getAllTransactions = async (req, res) => {
   try {
@@ -1037,6 +1040,153 @@ export const markPayoutPaid = async (req, res) => {
         status: payoutRequest.status,
         paymentReference: payoutRequest.paymentReference,
         resolvedAt: payoutRequest.resolvedAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getSessionDisputes = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_LIMIT));
+    const status = req.query.status;
+
+    const filter = {};
+    if (status) {
+      if (!VALID_DISPUTE_STATUSES.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${VALID_DISPUTE_STATUSES.join(', ')}` });
+      }
+      filter.status = status;
+    }
+
+    const [disputes, totalCount] = await Promise.all([
+      SessionDispute.find(filter)
+        .populate('reportedBy', 'name email')
+        .populate({
+          path: 'meeting',
+          select: 'title startsAt duration sessionType skill participants createdBy',
+          populate: { path: 'participants', select: 'name email' },
+        })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      SessionDispute.countDocuments(filter),
+    ]);
+
+    res.json({
+      disputes: disputes.map((d) => ({
+        id: d._id.toString(),
+        status: d.status,
+        reason: d.reason,
+        adminNote: d.adminNote,
+        createdAt: d.createdAt,
+        resolvedAt: d.resolvedAt,
+        reportedBy: d.reportedBy
+          ? { id: d.reportedBy._id.toString(), name: d.reportedBy.name, email: d.reportedBy.email }
+          : null,
+        meeting: d.meeting
+          ? {
+              id: d.meeting._id.toString(),
+              title: d.meeting.title,
+              startsAt: d.meeting.startsAt,
+              duration: d.meeting.duration,
+              sessionType: d.meeting.sessionType,
+              skill: d.meeting.skill,
+              participants: (d.meeting.participants || []).map((p) => ({
+                id: p._id.toString(),
+                name: p.name,
+                email: p.email,
+              })),
+            }
+          : null,
+      })),
+      page,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+      totalCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const reviewSessionDispute = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, adminNote } = req.body;
+
+    if (!['upheld', 'rejected'].includes(decision)) {
+      return res.status(400).json({ message: "decision must be 'upheld' or 'rejected'" });
+    }
+    if (!adminNote?.trim()) {
+      return res.status(400).json({ message: 'adminNote is required' });
+    }
+
+    const dispute = await SessionDispute.findById(id).populate('meeting');
+    if (!dispute) {
+      return res.status(404).json({ message: 'Dispute not found' });
+    }
+    if (dispute.status !== 'pending') {
+      return res.status(400).json({ message: `This dispute has already been ${dispute.status}.` });
+    }
+
+    const meeting = dispute.meeting;
+    if (!meeting) {
+      return res.status(404).json({ message: 'The meeting behind this dispute no longer exists.' });
+    }
+    if (meeting.creditsProcessed) {
+      // Shouldn't happen (a pending dispute blocks Step 2), but don't let a
+      // decision double-process credits if it somehow does.
+      return res.status(400).json({ message: 'Credits for this meeting have already been finalized.' });
+    }
+
+    dispute.status = decision;
+    dispute.adminNote = adminNote.trim();
+    dispute.resolvedAt = new Date();
+    await dispute.save();
+
+    if (decision === 'upheld') {
+      // No-show confirmed - permanently block credits for this meeting. Set
+      // creditsProcessed so Step 2's query (creditsProcessed: false) can never
+      // pick this meeting up again, same as the "insufficient balance" branch
+      // in processCompletedMeetingCredits uses to mark a meeting settled
+      // without a transfer happening.
+      meeting.creditsProcessed = true;
+      meeting.creditsNote = `No credits transferred - dispute upheld: ${adminNote.trim()}`;
+      await meeting.save();
+    } else {
+      // Rejected - the dispute doesn't hold up, so process credits right now
+      // rather than waiting for the next Step 2 tick.
+      await processCompletedMeetingCredits(meeting);
+    }
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: decision === 'upheld' ? 'session_dispute_upheld' : 'session_dispute_rejected',
+      targetUserId: dispute.reportedBy,
+      details: { disputeId: dispute._id.toString(), meetingId: meeting._id.toString(), adminNote: dispute.adminNote },
+    });
+
+    const participantIds = meeting.participants.map(String);
+    for (const participantId of participantIds) {
+      notifyUser({
+        userId: participantId,
+        type: decision === 'upheld' ? 'session_dispute_upheld' : 'session_dispute_rejected',
+        title: decision === 'upheld' ? 'Session dispute resolved - no-show confirmed' : 'Session dispute resolved - session stands',
+        body: decision === 'upheld'
+          ? `"${meeting.title}": ${adminNote.trim()} No credits were transferred for this session.`
+          : `"${meeting.title}": ${adminNote.trim()} Credits have been processed as normal.`,
+        link: '/meetings/history',
+      });
+    }
+
+    res.json({
+      dispute: {
+        id: dispute._id.toString(),
+        status: dispute.status,
+        adminNote: dispute.adminNote,
+        resolvedAt: dispute.resolvedAt,
       },
     });
   } catch (error) {

@@ -106,6 +106,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
     location: "",
     timezone: "",
     languages: [],
+    acceptsFreeTrialSessions: false,
   });
 
   // Skills and certifications state
@@ -142,6 +143,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
         location: user?.location || "",
         timezone: user?.timezone || "",
         languages: user?.languages || [],
+        acceptsFreeTrialSessions: Boolean(user?.acceptsFreeTrialSessions),
       });
       setAvatarPreview(user?.avatar || null);
       setAvatarFile(null);
@@ -579,7 +581,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
               />
               {/* Suggestions Dropdown */}
               {teachingSuggestions.length > 0 && (
-                <div className="absolute top-full max-w-md left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                <div className="absolute top-full max-w-md left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-60 max-h-32 overflow-y-auto">
                   {teachingSuggestions.map((suggestion) => (
                     <button
                       key={suggestion}
@@ -618,6 +620,22 @@ function EditProfileModal({ isOpen, onClose, user }) {
                 </p>
               )}
             </div>
+
+            <label className="flex items-start gap-2.5 mt-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.acceptsFreeTrialSessions}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, acceptsFreeTrialSessions: e.target.checked }))
+                }
+                className="mt-0.5 accent-teal"
+              />
+              <span className="font-family-poppins text-xs text-black">
+                <span className="font-semibold">Accept free trial sessions from new students</span> -
+                new students get one free session with a teacher who opts in. You won't earn credits
+                for that specific session. Off by default.
+              </span>
+            </label>
           </div>
 
           {/* Skills I'm Learning */}
@@ -637,7 +655,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
               />
               {/* Suggestions Dropdown */}
               {learningSuggestions.length > 0 && (
-                <div className="absolute  max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                <div className="absolute  max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-60 max-h-32 overflow-y-auto">
                   {learningSuggestions.map((suggestion) => (
                     <button
                       key={suggestion}
@@ -695,7 +713,7 @@ function EditProfileModal({ isOpen, onClose, user }) {
               />
               {/* Suggestions Dropdown */}
               {certSuggestions.length > 0 && (
-                <div className="absolute max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                <div className="absolute max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-60 max-h-32 overflow-y-auto">
                   {certSuggestions.map((suggestion) => (
                     <button
                       key={suggestion}

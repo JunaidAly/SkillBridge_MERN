@@ -60,6 +60,13 @@ const meetingSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    // Set at booking time (never inferred later, since eligibility could
+    // change by completion time) - when true, credit-finalization skips both
+    // the student deduction and the teacher award for this meeting entirely.
+    isFreeTrialSession: {
+      type: Boolean,
+      default: false,
+    },
     // Status: scheduled, completed, cancelled
     status: {
       type: String,
@@ -88,15 +95,30 @@ const meetingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    // Set once completion-time credits have been transferred (or explicitly
-    // skipped, e.g. insufficient learner balance) for this meeting, so it's
-    // never processed twice.
+    // When the completion cron detected the scheduled time had passed and set
+    // status to 'completed'. Credits are NOT processed at this moment - see
+    // disputeDeadline below and utils/meetingCompletion.js.
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    // completedAt + 24h. Either participant can file a SessionDispute any
+    // time before this passes; credits only finalize once it has passed AND
+    // there's no pending dispute (or an admin resolves one, which finalizes
+    // - or permanently blocks - credits immediately regardless of this).
+    disputeDeadline: {
+      type: Date,
+      default: null,
+    },
+    // Set once credits have been finalized for this meeting - either
+    // transferred, explicitly skipped (e.g. insufficient learner balance), or
+    // permanently blocked by an upheld no-show dispute. Never processed twice.
     creditsProcessed: {
       type: Boolean,
       default: false,
     },
-    // Set when credits were NOT transferred at completion despite the session
-    // happening, e.g. the learner's balance was insufficient by then.
+    // Explains why creditsProcessed is true without a transfer actually
+    // happening (insufficient balance at completion, or an upheld dispute).
     creditsNote: {
       type: String,
       default: null,

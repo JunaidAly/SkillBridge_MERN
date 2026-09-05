@@ -18,6 +18,8 @@ import {
   reviewReport,
   suspendUser,
   unsuspendUser,
+  getSessionDisputes,
+  reviewSessionDispute,
 } from '../controllers/admin.controller.js';
 
 const router = express.Router();
@@ -38,5 +40,7 @@ router.get('/reports', authenticateToken, requireAdmin, getReports);
 router.patch('/reports/:reportId', authenticateToken, requireAdmin, reviewReport);
 router.patch('/users/:userId/suspend', authenticateToken, requireAdmin, suspendUser);
 router.patch('/users/:userId/unsuspend', authenticateToken, requireAdmin, unsuspendUser);
+router.get('/session-disputes', authenticateToken, requireAdmin, getSessionDisputes);
+router.patch('/session-disputes/:id/review', authenticateToken, requireAdmin, reviewSessionDispute);
 
 export default router;

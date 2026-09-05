@@ -3,5 +3,4 @@
 // never drift apart.
 export const CREDITS_PER_TEACHING_SESSION = 25;
 export const CREDITS_PER_LEARNING_SESSION = 25;
-export const INITIAL_FREE_CREDITS = 100;
 export const LOW_BALANCE_THRESHOLD = 20;

@@ -6,6 +6,9 @@ import { createMeeting, fetchMeetings } from "../../store/meetingsSlice";
 import { fetchWallet } from "../../store/creditsSlice";
 import { fetchProfile } from "../../store/profileSlice";
 
+// Mirrors backend/config/sessionCreditRates.js - keep in sync if those change.
+const CREDITS_PER_LEARNING_SESSION = 25;
+
 // Rounds up to the next 15-minute mark so the default doesn't land in the past.
 function getDefaultDateTime() {
   const d = new Date();
@@ -23,6 +26,7 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
   const [recipientId, setRecipientId] = useState("");
   const [sessionRole, setSessionRole] = useState("teaching");
   const [selectedSkill, setSelectedSkill] = useState("");
+  const [useFreeTrial, setUseFreeTrial] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -31,6 +35,7 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
   const { profile } = useSelector((s) => s.profile);
   const { conversations } = useSelector((s) => s.chat);
   const { user } = useSelector((s) => s.auth);
+  const { wallet } = useSelector((s) => s.credits);
 
   const contacts = useMemo(() => {
     const meId = user?.id;
@@ -40,11 +45,26 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
         conversationId: c._id,
         otherUserId: other?._id || other?.id,
         name: other?.name || "Conversation",
+        avatar: other?.avatar || null,
+        acceptsFreeTrialSessions: Boolean(other?.acceptsFreeTrialSessions),
       };
     }).filter((c) => c.otherUserId);
   }, [conversations, user]);
 
   const recipient = contacts.find((c) => c.otherUserId === recipientId);
+
+  const trialEligible =
+    sessionRole === "learning" &&
+    profile &&
+    !profile.freeTrialSessionUsed &&
+    Boolean(recipient?.acceptsFreeTrialSessions);
+
+  // Default to using the trial whenever it becomes available - it's strictly
+  // better than paying, and resetting on every relevant change means it can
+  // never stay "on" for a role/recipient combo where it's no longer valid.
+  useEffect(() => {
+    setUseFreeTrial(trialEligible);
+  }, [trialEligible]);
 
   // Reset the form defaults (including current-time-based date/time) every
   // time the modal opens, and pre-fill the recipient if one was pre-selected.
@@ -54,11 +74,13 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
     setSelectedDate(date);
     setSelectedTime(time);
     setRecipientId(selectedChat?.otherUserId || "");
+    dispatch(fetchWallet());
+    dispatch(fetchProfile());
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "unset";
     };
-  }, [isOpen, selectedChat]);
+  }, [isOpen, selectedChat, dispatch]);
 
   const availableSkills = useMemo(() => {
     if (!profile) return [];
@@ -81,9 +103,16 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
     }, 200);
   };
 
+  const hasEnoughCreditsToLearn =
+    sessionRole !== "learning" || useFreeTrial || (wallet?.balance ?? 0) >= CREDITS_PER_LEARNING_SESSION;
+
   const handlePropose = async () => {
     if (!recipient) {
       toast.warning("Choose who to schedule this session with.");
+      return;
+    }
+    if (!hasEnoughCreditsToLearn) {
+      toast.warning(`You need at least ${CREDITS_PER_LEARNING_SESSION} credits to schedule a learning session.`);
       return;
     }
 
@@ -103,13 +132,18 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
           sessionType: sessionRole,
           skill: selectedSkill || null,
           duration: 60,
+          useFreeTrialSession: trialEligible && useFreeTrial,
         })
       ).unwrap();
 
       dispatch(fetchWallet());
       dispatch(fetchProfile());
       dispatch(fetchMeetings());
-      toast.success("Session scheduled! Credits are exchanged once the session is completed.");
+      toast.success(
+        trialEligible && useFreeTrial
+          ? "Free trial session scheduled! No credits will be charged."
+          : "Session scheduled! Credits are exchanged once the session is completed."
+      );
       handleClose();
     } catch (err) {
       toast.error(err || "Failed to schedule session");
@@ -129,7 +163,7 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
 
       <div
-        className={`relative bg-white shadow-xl rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto ${
+        className={`relative bg-white shadow-xl rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto scrollbar-hide ${
           isClosing ? "modal-content-exit" : "modal-content-enter"
         }`}
       >
@@ -152,20 +186,40 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
               Schedule with:
             </label>
             {contacts.length > 0 ? (
-              <select
-                value={recipientId}
-                onChange={(e) => setRecipientId(e.target.value)}
-                className="w-full px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal bg-white"
-              >
-                <option value="" disabled>
-                  Select a person...
-                </option>
-                {contacts.map((c) => (
-                  <option key={c.otherUserId} value={c.otherUserId}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-3 overflow-x-auto py-1 -mx-1 px-1">
+                {contacts.map((c) => {
+                  const isSelected = c.otherUserId === recipientId;
+                  return (
+                    <button
+                      key={c.otherUserId}
+                      type="button"
+                      onClick={() => setRecipientId(c.otherUserId)}
+                      className="flex flex-col items-center gap-1 shrink-0 w-16"
+                    >
+                      <div
+                        className={`w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden transition-all ${
+                          isSelected ? "ring-2 ring-teal ring-offset-2" : "hover:ring-2 hover:ring-gray-300 hover:ring-offset-2"
+                        }`}
+                      >
+                        {c.avatar ? (
+                          <img src={c.avatar} alt={c.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-gray text-lg font-medium">
+                            {c.name?.charAt(0) || "U"}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`font-family-poppins text-xs text-center truncate w-full ${
+                          isSelected ? "text-teal font-semibold" : "text-gray"
+                        }`}
+                      >
+                        {c.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             ) : (
               <p className="font-family-poppins text-xs text-orange-500 p-2 bg-orange-50 rounded-lg">
                 Start a conversation first to schedule a session with someone.
@@ -198,10 +252,26 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
                     : "bg-gray-100 text-gray hover:bg-gray-200"
                 }`}
               >
-                Learn (-25)
+                Learn {trialEligible ? "(free trial)" : "(-25)"}
               </button>
             </div>
           </div>
+
+          {trialEligible && (
+            <label className="flex items-start gap-2.5 p-3 bg-teal/10 rounded-lg cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useFreeTrial}
+                onChange={(e) => setUseFreeTrial(e.target.checked)}
+                className="mt-0.5 accent-teal"
+              />
+              <span className="font-family-poppins text-xs text-black">
+                <span className="font-semibold">Use my free trial session</span> - {recipient.name}{" "}
+                accepts free trial bookings. This is your one and only free session as a student;
+                no credits will be charged.
+              </span>
+            </label>
+          )}
 
           <div>
             <label className="font-family-poppins text-xs text-gray mb-2 block">
@@ -250,9 +320,23 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
             </div>
           </div>
 
-          <p className="font-family-poppins text-xs text-gray bg-gray-50 rounded-lg p-2.5">
-            Credits are only exchanged once the session actually completes - not at booking time.
-          </p>
+          {trialEligible && useFreeTrial ? (
+            <p className="font-family-poppins text-xs text-teal bg-teal/10 rounded-lg p-2.5">
+              This session is free - no credits will be charged to you or paid to {recipient.name}.
+            </p>
+          ) : hasEnoughCreditsToLearn ? (
+            <p className="font-family-poppins text-xs text-gray bg-gray-50 rounded-lg p-2.5">
+              Credits are only exchanged once the session actually completes - not at booking time.
+            </p>
+          ) : (
+            <p className="font-family-poppins text-xs text-red-600 bg-red-50 rounded-lg p-2.5">
+              You have {wallet?.balance ?? 0} credits, but a learning session costs {CREDITS_PER_LEARNING_SESSION}.{" "}
+              <a href="/credits" className="underline font-medium">
+                Buy more credits
+              </a>{" "}
+              to schedule this session.
+            </p>
+          )}
 
           <div className="flex justify-end gap-3 pt-2">
             <button
@@ -266,7 +350,7 @@ function ScheduleSessionModal({ isOpen, onClose, selectedChat }) {
             <button
               type="button"
               onClick={handlePropose}
-              disabled={isSubmitting || availableSkills.length === 0 || !recipient}
+              disabled={isSubmitting || availableSkills.length === 0 || !recipient || !hasEnoughCreditsToLearn}
               className="font-family-poppins font-medium px-6 py-2.5 rounded-lg transition-all bg-dark-blue text-white hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
             >
               {isSubmitting ? "Scheduling..." : "Propose New Session"}

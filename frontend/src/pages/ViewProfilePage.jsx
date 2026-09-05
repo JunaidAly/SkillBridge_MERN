@@ -16,6 +16,8 @@ function ViewProfilePage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -33,6 +35,24 @@ function ViewProfilePage() {
 
     if (id) {
       fetchUserProfile();
+    }
+  }, [id]);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        setReviewsLoading(true);
+        const res = await apiClient.get(`/feedback/user/${id}`);
+        setReviews(res.data.feedbacks || []);
+      } catch (err) {
+        console.error('Failed to load reviews:', err);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchReviews();
     }
   }, [id]);
 
@@ -326,6 +346,74 @@ function ViewProfilePage() {
             </p>
           )}
         </div>
+      </div>
+
+      {/* Reviews Section */}
+      <div className="bg-white rounded-xl p-6 shadow-sm">
+        <h2 className="font-family-poppins text-lg font-semibold text-black mb-4">
+          Reviews
+        </h2>
+
+        {reviewsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-teal" />
+          </div>
+        ) : reviews.length === 0 ? (
+          <p className="text-gray text-sm text-center py-4">
+            No reviews yet.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((review) => (
+              <div key={review.id} className="border border-[#E5E5E5] rounded-xl p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                      {review.avatar ? (
+                        <img
+                          src={review.avatar}
+                          alt={review.name}
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-gray text-sm font-medium">
+                          {review.name?.charAt(0)?.toUpperCase() || "?"}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-family-poppins text-sm font-semibold text-black">
+                        {review.name}
+                      </p>
+                      <p className="font-family-poppins text-xs text-gray">{review.date}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        size={16}
+                        className={
+                          star <= review.rating
+                            ? "text-yellow-500 fill-yellow-500"
+                            : "text-gray-300"
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+                {review.comment && (
+                  <p className="font-family-poppins text-sm text-gray mb-3">{review.comment}</p>
+                )}
+                {review.skill && (
+                  <span className="inline-block px-3 py-1.5 bg-light-teal rounded-full font-family-poppins text-xs text-gray">
+                    {review.skill}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

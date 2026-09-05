@@ -15,7 +15,7 @@ router.get('/conversations', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const conversations = await Conversation.find({ participants: userId })
-      .populate('participants', 'name email avatar lastSeen')
+      .populate('participants', 'name email avatar lastSeen acceptsFreeTrialSessions')
       .populate({
         path: 'lastMessage',
         select: 'text sender createdAt readBy messageType metadata',
@@ -63,7 +63,7 @@ router.post('/conversations', authenticateToken, async (req, res) => {
       participants: { $all: [userId, otherUserId] },
       $expr: { $eq: [{ $size: '$participants' }, 2] },
     })
-      .populate('participants', 'name email avatar lastSeen')
+      .populate('participants', 'name email avatar lastSeen acceptsFreeTrialSessions')
       .populate({
         path: 'lastMessage',
         select: 'text sender createdAt',
@@ -73,7 +73,7 @@ router.post('/conversations', authenticateToken, async (req, res) => {
     if (!conversation) {
       conversation = await Conversation.create({ participants: [userId, otherUserId] });
       conversation = await Conversation.findById(conversation._id)
-        .populate('participants', 'name email avatar lastSeen')
+        .populate('participants', 'name email avatar lastSeen acceptsFreeTrialSessions')
         .populate({
           path: 'lastMessage',
           select: 'text sender createdAt',

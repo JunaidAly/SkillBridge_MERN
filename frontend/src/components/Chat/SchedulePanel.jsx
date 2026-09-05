@@ -6,6 +6,7 @@ import { useToast } from "../../ui/Toast";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMeetings, cancelMeeting } from "../../store/meetingsSlice";
 import { fetchWallet } from "../../store/creditsSlice";
+import { getSocket } from "../../socket";
 
 // A call can be joined starting this many minutes before its scheduled start.
 const JOIN_WINDOW_BEFORE_MINUTES = 10;
@@ -23,6 +24,16 @@ function SchedulePanel({ onScheduleClick }) {
   useEffect(() => {
     dispatch(fetchMeetings());
     dispatch(fetchWallet());
+  }, [dispatch]);
+
+  // The other participant's own fetchMeetings() dispatch (from their browser,
+  // after they book a session) never reaches this session - only a live push
+  // does, otherwise this panel would stay stale until the next full reload.
+  useEffect(() => {
+    const socket = getSocket();
+    const onNewMeeting = () => dispatch(fetchMeetings());
+    socket.on("newMeeting", onNewMeeting);
+    return () => socket.off("newMeeting", onNewMeeting);
   }, [dispatch]);
 
   // Re-check join-window eligibility periodically so the "Join" button enables

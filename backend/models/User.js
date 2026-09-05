@@ -183,6 +183,19 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // True once this user has booked their one free trial session as a
+    // student - set at booking time, not completion, and never reset by any
+    // in-app action. See Meeting.isFreeTrialSession.
+    freeTrialSessionUsed: {
+      type: Boolean,
+      default: false,
+    },
+    // Teacher-side opt-in: off by default, since accepting a free-trial
+    // booking means this user earns nothing for that session.
+    acceptsFreeTrialSessions: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

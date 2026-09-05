@@ -7,7 +7,10 @@ import User from '../models/User.js';
 import { sendMeetingInviteEmail } from '../utils/emailService.js';
 import { generateJaasToken } from '../utils/jaasToken.js';
 import { notifyUser } from '../utils/notify.js';
-import { getSessionRoles, completeExpiredMeetings } from '../utils/meetingCompletion.js';
+import SessionDispute from '../models/SessionDispute.js';
+import { getSessionRoles, runMeetingCompletionSweep } from '../utils/meetingCompletion.js';
+import { getOrCreateWallet } from '../utils/wallet.js';
+import { CREDITS_PER_LEARNING_SESSION } from '../config/sessionCreditRates.js';
 
 const router = express.Router();
 
@@ -21,9 +24,10 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Complete any meetings whose time has passed (also runs on a schedule -
-    // see jobs/completeMeetings.js - this is just a fast-path for the caller).
-    await completeExpiredMeetings();
+    // Complete any meetings whose time has passed, and finalize credits for
+    // any whose dispute window has closed (also runs on a schedule - see
+    // jobs/completeMeetings.js - this is just a fast-path for the caller).
+    await runMeetingCompletionSweep();
 
     // Only return scheduled (upcoming) meetings
     const meetings = await Meeting.find({
@@ -39,20 +43,57 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Get all meetings including completed (for history)
+const MAX_HISTORY_PAGE_LIMIT = 50;
+const DEFAULT_HISTORY_PAGE_LIMIT = 10;
+
+// Get all meetings including completed (for history), paginated
 router.get('/history', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { status, limit = 50 } = req.query;
+    const { status } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_HISTORY_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_HISTORY_PAGE_LIMIT));
 
     const filter = { participants: userId };
     if (status) filter.status = status;
 
-    const meetings = await Meeting.find(filter)
-      .populate('participants', 'name email avatar')
-      .sort({ startsAt: -1 })
-      .limit(Number(limit));
-    res.json({ success: true, meetings });
+    const [meetings, totalCount] = await Promise.all([
+      Meeting.find(filter)
+        .populate('participants', 'name email avatar')
+        .sort({ startsAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Meeting.countDocuments(filter),
+    ]);
+
+    // Attach each meeting's own dispute (if any) so the frontend can show
+    // "Report an issue" vs. an existing dispute's status without a second
+    // round-trip per meeting.
+    const meetingIds = meetings.map((m) => m._id);
+    const disputes = await SessionDispute.find({ meeting: { $in: meetingIds } }).sort({ createdAt: -1 });
+    const disputeByMeetingId = new Map();
+    for (const d of disputes) {
+      const key = String(d.meeting);
+      if (!disputeByMeetingId.has(key)) disputeByMeetingId.set(key, d); // most recent only
+    }
+
+    const meetingsWithDispute = meetings.map((m) => {
+      const dispute = disputeByMeetingId.get(String(m._id));
+      return {
+        ...m.toObject(),
+        dispute: dispute
+          ? { id: dispute._id.toString(), status: dispute.status, reason: dispute.reason, createdAt: dispute.createdAt }
+          : null,
+      };
+    });
+
+    res.json({
+      success: true,
+      meetings: meetingsWithDispute,
+      page,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+      totalCount,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -100,7 +141,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { conversationId, otherUserId, title, startsAt, sessionType, skill, duration } = req.body;
+    const { conversationId, otherUserId, title, startsAt, sessionType, skill, duration, useFreeTrialSession } = req.body;
 
     if (!otherUserId) return res.status(400).json({ message: 'otherUserId is required' });
     if (!title?.trim()) return res.status(400).json({ message: 'title is required' });
@@ -109,8 +150,36 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'sessionType must be "teaching" or "learning"' });
     }
 
-    const other = await User.findById(otherUserId).select('_id name');
+    const other = await User.findById(otherUserId).select('_id name acceptsFreeTrialSessions');
     if (!other) return res.status(404).json({ message: 'User not found' });
+
+    // Eligibility is always re-verified server-side, never trusted from the
+    // client body alone - this is what lets a session skip the balance check
+    // entirely, so it can't be spoofed.
+    let isFreeTrialSession = false;
+    if (sessionType === 'learning' && useFreeTrialSession) {
+      const student = await User.findById(userId).select('freeTrialSessionUsed');
+      if (student.freeTrialSessionUsed) {
+        return res.status(400).json({ message: "You've already used your one free trial session." });
+      }
+      if (!other.acceptsFreeTrialSessions) {
+        return res.status(400).json({ message: `${other.name} isn't accepting free trial bookings.` });
+      }
+      isFreeTrialSession = true;
+    }
+
+    // The creator is always the learner when sessionType is 'learning' (see
+    // getSessionRoles in meetingCompletion.js) - block scheduling upfront
+    // rather than only discovering the shortfall once the session completes.
+    // A free trial session skips this entirely - it costs nothing.
+    if (sessionType === 'learning' && !isFreeTrialSession) {
+      const wallet = await getOrCreateWallet(userId);
+      if (wallet.balance < CREDITS_PER_LEARNING_SESSION) {
+        return res.status(400).json({
+          message: `You need at least ${CREDITS_PER_LEARNING_SESSION} credits to schedule a learning session. Your balance is ${wallet.balance}.`,
+        });
+      }
+    }
 
     let convId = conversationId;
     if (convId) {
@@ -159,7 +228,14 @@ router.post('/', authenticateToken, async (req, res) => {
       sessionType,
       skill: skill?.trim() || null,
       status: 'scheduled',
+      isFreeTrialSession,
     });
+
+    // Used up at booking time, not completion - once booked, the trial is
+    // spent even if this specific session later gets cancelled or disputed.
+    if (isFreeTrialSession) {
+      await User.findByIdAndUpdate(userId, { freeTrialSessionUsed: true });
+    }
 
     const populated = await Meeting.findById(meeting._id).populate('participants', 'name email avatar');
 
@@ -191,6 +267,7 @@ router.post('/', authenticateToken, async (req, res) => {
           meetingId: meeting._id,
           joinUrl,
           startsAt: new Date(startsAt),
+          duration: duration || 60,
         },
       });
 
@@ -203,6 +280,15 @@ router.post('/', authenticateToken, async (req, res) => {
         const populatedMessage = await Message.findById(message._id).populate('sender', 'name email avatar');
         io.to(`conv:${convId}`).emit('newMessage', { message: populatedMessage });
       }
+    }
+
+    // Push the new meeting to the other participant in real time, so their
+    // SchedulePanel/Session History picks it up immediately - without this,
+    // they'd only see it after their next full page load, since fetchMeetings()
+    // dispatched from the creator's own browser doesn't touch anyone else's session.
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${otherUserId}`).emit('newMeeting', { meeting: populated });
     }
 
     // Send email notification to the other participant
@@ -306,6 +392,67 @@ router.post('/:id/rate', authenticateToken, async (req, res) => {
     }
 
     res.json({ success: true, meeting });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Report a no-show / dispute a completed meeting, within its 24h dispute
+// window and before credits finalize. Blocks Step 2 (finalizeDueMeetingCredits)
+// from processing this meeting's credits until an admin resolves the dispute.
+router.post('/:id/report-issue', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { reason } = req.body;
+
+    if (!reason?.trim()) {
+      return res.status(400).json({ message: 'reason is required' });
+    }
+
+    const meeting = await Meeting.findById(req.params.id);
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    if (!meeting.participants.map(String).includes(String(userId))) {
+      return res.status(403).json({ message: 'Not allowed' });
+    }
+
+    if (meeting.status !== 'completed') {
+      return res.status(400).json({ message: 'Can only report an issue on a completed session' });
+    }
+    if (meeting.creditsProcessed) {
+      return res.status(400).json({
+        message: 'Credits have already been finalized for this session, so it can no longer be disputed this way. Contact support if you still need this looked at.',
+      });
+    }
+    if (meeting.disputeDeadline && new Date() > meeting.disputeDeadline) {
+      return res.status(400).json({ message: 'The 24-hour window to report an issue for this session has passed.' });
+    }
+
+    const existingPending = await SessionDispute.findOne({ meeting: meeting._id, status: 'pending' });
+    if (existingPending) {
+      return res.status(400).json({ message: 'An issue has already been reported for this session and is pending review.' });
+    }
+
+    const dispute = await SessionDispute.create({
+      meeting: meeting._id,
+      reportedBy: userId,
+      reason: reason.trim(),
+    });
+
+    const otherParticipantId = meeting.participants.map(String).find((p) => p !== String(userId));
+    if (otherParticipantId) {
+      notifyUser({
+        userId: otherParticipantId,
+        type: 'session_disputed',
+        title: 'A session you attended was reported',
+        body: `"${meeting.title}" was flagged for review. Credits are on hold until an admin looks into it.`,
+        link: '/meetings/history',
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      dispute: { id: dispute._id.toString(), status: dispute.status, reason: dispute.reason, createdAt: dispute.createdAt },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

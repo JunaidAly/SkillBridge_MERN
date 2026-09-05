@@ -31,13 +31,18 @@ export const fetchMeetingById = createAsyncThunk(
 
 export const fetchMeetingHistory = createAsyncThunk(
   'meetings/fetchHistory',
-  async ({ status, limit } = {}, { rejectWithValue }) => {
+  async ({ status, limit, page } = {}, { rejectWithValue }) => {
     try {
       const params = new URLSearchParams();
       if (status) params.append('status', status);
       if (limit) params.append('limit', limit);
+      if (page) params.append('page', page);
       const res = await apiClient.get(`/meetings/history?${params.toString()}`);
-      return res.data.meetings;
+      return {
+        meetings: res.data.meetings,
+        page: res.data.page,
+        totalPages: res.data.totalPages,
+      };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to load meeting history');
     }
@@ -46,7 +51,7 @@ export const fetchMeetingHistory = createAsyncThunk(
 
 export const createMeeting = createAsyncThunk(
   'meetings/create',
-  async ({ conversationId, otherUserId, title, startsAt, sessionType, skill, duration }, { rejectWithValue }) => {
+  async ({ conversationId, otherUserId, title, startsAt, sessionType, skill, duration, useFreeTrialSession }, { rejectWithValue }) => {
     try {
       const res = await apiClient.post('/meetings', {
         conversationId,
@@ -56,6 +61,7 @@ export const createMeeting = createAsyncThunk(
         sessionType,
         skill,
         duration,
+        useFreeTrialSession,
       });
       return res.data.meeting;
     } catch (err) {
@@ -72,6 +78,18 @@ export const rateMeeting = createAsyncThunk(
       return res.data.meeting;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to rate meeting');
+    }
+  }
+);
+
+export const reportMeetingIssue = createAsyncThunk(
+  'meetings/reportIssue',
+  async ({ meetingId, reason }, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post(`/meetings/${meetingId}/report-issue`, { reason });
+      return { meetingId, dispute: res.data.dispute };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to report issue');
     }
   }
 );
@@ -105,6 +123,9 @@ const meetingsSlice = createSlice({
   initialState: {
     meetings: [],
     history: [],
+    historyPage: 1,
+    historyTotalPages: 1,
+    historyLoading: false,
     loading: false,
     error: null,
     currentMeeting: null,
@@ -146,8 +167,17 @@ const meetingsSlice = createSlice({
         s.currentMeetingLoading = false;
         s.currentMeetingError = a.payload;
       })
+      .addCase(fetchMeetingHistory.pending, (s) => {
+        s.historyLoading = true;
+      })
       .addCase(fetchMeetingHistory.fulfilled, (s, a) => {
-        s.history = a.payload || [];
+        s.historyLoading = false;
+        s.history = a.payload.meetings || [];
+        s.historyPage = a.payload.page || 1;
+        s.historyTotalPages = a.payload.totalPages || 1;
+      })
+      .addCase(fetchMeetingHistory.rejected, (s) => {
+        s.historyLoading = false;
       })
       .addCase(createMeeting.fulfilled, (s, a) => {
         s.meetings = [a.payload, ...(s.meetings || [])];
@@ -163,6 +193,12 @@ const meetingsSlice = createSlice({
         const idx = s.history.findIndex(m => m._id === a.payload._id);
         if (idx >= 0) {
           s.history[idx] = a.payload;
+        }
+      })
+      .addCase(reportMeetingIssue.fulfilled, (s, a) => {
+        const idx = s.history.findIndex(m => m._id === a.payload.meetingId);
+        if (idx >= 0) {
+          s.history[idx].dispute = a.payload.dispute;
         }
       });
   },

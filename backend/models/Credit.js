@@ -62,7 +62,7 @@ const creditWalletSchema = new mongoose.Schema(
     },
     balance: {
       type: Number,
-      default: 100, // Initial free credits for new users
+      default: 0,
       min: 0,
     },
     totalEarned: {

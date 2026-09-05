@@ -1,8 +1,12 @@
 import Meeting from '../models/Meeting.js';
 import User from '../models/User.js';
+import SessionDispute from '../models/SessionDispute.js';
 import { CreditTransaction } from '../models/Credit.js';
 import { getOrCreateWallet, notifyIfCrossedLowBalance } from './wallet.js';
 import { CREDITS_PER_TEACHING_SESSION, CREDITS_PER_LEARNING_SESSION } from '../config/sessionCreditRates.js';
+
+// How long either participant has to report a no-show before credits finalize.
+const DISPUTE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // A meeting's sessionType is always taken from the creator's own perspective
 // at booking time (see frontend SchedulePanel.jsx). This is the single source
@@ -52,6 +56,16 @@ export async function updateUserStatsForMeeting(meeting) {
 // it and no refund/reversal system is needed as a result.
 export async function processCompletedMeetingCredits(meeting) {
   if (meeting.creditsProcessed) return;
+
+  if (meeting.isFreeTrialSession) {
+    // Free trial: student pays 0, teacher earns 0 - never touches either
+    // wallet. Still goes through the normal completion/dispute flow up to
+    // this point (see finalizeDueMeetingCredits), it just settles as a no-op.
+    meeting.creditsProcessed = true;
+    meeting.creditsNote = 'Free trial session - no credits were charged or earned.';
+    await meeting.save();
+    return;
+  }
 
   const { teacherId, learnerId } = getSessionRoles(meeting);
   if (!teacherId || !learnerId) {
@@ -107,12 +121,13 @@ export async function processCompletedMeetingCredits(meeting) {
   await meeting.save();
 }
 
-// Marks any 'scheduled' meeting whose end time has passed as 'completed',
-// updates stats, and processes its credits. Global (not scoped to one user)
-// so a periodic job can run it independently of anyone visiting their
-// dashboard - relying only on a user's own GET /meetings call would mean a
-// meeting between two people who never revisit the app never gets completed.
-export async function completeExpiredMeetings() {
+// Step 1: marks any 'scheduled' meeting whose end time has passed as
+// 'completed' and starts its 24h dispute window - does NOT touch credits.
+// Global (not scoped to one user) so a periodic job can run it independently
+// of anyone visiting their dashboard - relying only on a user's own GET
+// /meetings call would mean a meeting between two people who never revisit
+// the app never gets completed.
+export async function markExpiredMeetingsCompleted() {
   const now = new Date();
   const candidates = await Meeting.find({ status: 'scheduled', startsAt: { $lte: now } });
 
@@ -120,9 +135,36 @@ export async function completeExpiredMeetings() {
     const endTime = new Date(meeting.startsAt.getTime() + (meeting.duration || 60) * 60 * 1000);
     if (now > endTime) {
       meeting.status = 'completed';
+      meeting.completedAt = now;
+      meeting.disputeDeadline = new Date(now.getTime() + DISPUTE_WINDOW_MS);
       await meeting.save();
       await updateUserStatsForMeeting(meeting);
-      await processCompletedMeetingCredits(meeting);
     }
   }
+}
+
+// Step 2: for meetings whose dispute window has closed, finalizes credits -
+// unless a dispute is still pending, in which case it's left untouched until
+// an admin resolves it (see admin.controller.js reviewSessionDispute).
+export async function finalizeDueMeetingCredits() {
+  const now = new Date();
+  const candidates = await Meeting.find({
+    status: 'completed',
+    creditsProcessed: false,
+    disputeDeadline: { $lte: now },
+  });
+
+  for (const meeting of candidates) {
+    const pendingDispute = await SessionDispute.findOne({ meeting: meeting._id, status: 'pending' });
+    if (pendingDispute) continue;
+    await processCompletedMeetingCredits(meeting);
+  }
+}
+
+// Runs both steps in order - used both by the periodic cron job and as a
+// fast-path when a user's own GET /meetings loads, so completion/finalization
+// doesn't wait on the cron tick for the person actually looking at the page.
+export async function runMeetingCompletionSweep() {
+  await markExpiredMeetingsCompleted();
+  await finalizeDueMeetingCredits();
 }

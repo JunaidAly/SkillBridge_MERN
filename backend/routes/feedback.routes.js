@@ -36,6 +36,32 @@ router.get('/received', authenticateToken, async (req, res) => {
   }
 });
 
+// Get feedback received by a specific user (public reviews shown on their profile)
+router.get('/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find({ toUser: req.params.userId })
+      .populate('fromUser', 'name email avatar')
+      .populate('meeting', 'title startsAt')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({
+      success: true,
+      feedbacks: feedbacks.map((f) => ({
+        id: f._id,
+        name: f.fromUser?.name || 'Unknown',
+        avatar: f.fromUser?.avatar || null,
+        rating: f.rating,
+        date: f.createdAt.toISOString().split('T')[0],
+        comment: f.comment,
+        skill: f.skill,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Get feedback given by current user
 router.get('/given', authenticateToken, async (req, res) => {
   try {

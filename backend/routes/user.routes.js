@@ -36,6 +36,8 @@ router.get('/me', authenticateToken, async (req, res) => {
         verificationReviewedAt: user.verificationReviewedAt,
         verificationRejectionReason: user.verificationRejectionReason,
         blockedUsers: user.blockedUsers,
+        freeTrialSessionUsed: user.freeTrialSessionUsed,
+        acceptsFreeTrialSessions: user.acceptsFreeTrialSessions,
       },
     });
   } catch (error) {
@@ -46,7 +48,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 // Update user profile
 router.put('/me', authenticateToken, async (req, res) => {
   try {
-    const { name, bio, location, languages, timezone } = req.body;
+    const { name, bio, location, languages, timezone, acceptsFreeTrialSessions } = req.body;
 
     const updateData = {};
     if (name !== undefined) updateData.name = name;
@@ -54,6 +56,7 @@ router.put('/me', authenticateToken, async (req, res) => {
     if (location !== undefined) updateData.location = location;
     if (languages !== undefined) updateData.languages = languages;
     if (timezone !== undefined) updateData.timezone = timezone;
+    if (acceptsFreeTrialSessions !== undefined) updateData.acceptsFreeTrialSessions = acceptsFreeTrialSessions;
 
     const user = await User.findByIdAndUpdate(
       req.user.userId,
@@ -82,6 +85,8 @@ router.put('/me', authenticateToken, async (req, res) => {
         skillsLearning: user.skillsLearning,
         certifications: user.certifications,
         stats: user.stats,
+        freeTrialSessionUsed: user.freeTrialSessionUsed,
+        acceptsFreeTrialSessions: user.acceptsFreeTrialSessions,
       },
     });
   } catch (error) {
@@ -568,6 +573,7 @@ router.get('/:userId', authenticateToken, async (req, res) => {
         certifications: user.certifications,
         stats: user.stats,
         verificationStatus: user.verificationStatus,
+        acceptsFreeTrialSessions: user.acceptsFreeTrialSessions,
       },
     });
   } catch (error) {

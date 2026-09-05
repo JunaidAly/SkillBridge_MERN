@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Star, Loader2, RefreshCw } from "lucide-react";
+import { Star, Loader2 } from "lucide-react";
 import Button from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import {
@@ -22,26 +22,14 @@ function FeedbackPage() {
   const [feedbackText, setFeedbackText] = useState("");
   const [activeTab, setActiveTab] = useState("received");
   const [selectedSession, setSelectedSession] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        dispatch(fetchFeedbackReceived()).unwrap(),
-        dispatch(fetchFeedbackGiven()).unwrap(),
-        dispatch(fetchPendingSessions()).unwrap(),
-      ]);
-      showSuccess("Feedback data refreshed!");
-    } catch (err) {
-      console.error("Failed to refresh:", err);
-      showError("Failed to refresh data");
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // Guards against React StrictMode's dev-only double-invocation of this
+  // effect, which was firing the load (and its toasts) twice per mount.
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+
     const loadFeedbackData = async () => {
       try {
         const results = await Promise.all([
@@ -49,10 +37,7 @@ function FeedbackPage() {
           dispatch(fetchFeedbackGiven()).unwrap(),
           dispatch(fetchPendingSessions()).unwrap(),
         ]);
-        
-        // Log for debugging
-        console.log("Pending sessions loaded:", results[2]);
-        
+
         if (results[2] && results[2].length === 0) {
           showInfo("No completed sessions found. Complete a session to provide feedback.");
         }
@@ -124,14 +109,6 @@ function FeedbackPage() {
         <h1 className="font-family-poppins text-2xl font-bold text-black">
           Feedback & Ratings
         </h1>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal border border-teal rounded-lg hover:bg-teal hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
 
       {/* Feedback Card */}

@@ -11,6 +11,7 @@ import ChatPage from "./pages/ChatPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import CreditsPage from "./pages/CreditsPage";
 import PurchaseHistory from "./pages/PurchaseHistory";
+import SessionHistory from "./pages/SessionHistory";
 import AdminTransactions from "./pages/AdminTransactions";
 import AdminUsers from "./pages/AdminUsers";
 import AdminAuditLog from "./pages/AdminAuditLog";
@@ -18,6 +19,7 @@ import AdminVerifications from "./pages/AdminVerifications";
 import AdminRefunds from "./pages/AdminRefunds";
 import AdminPayouts from "./pages/AdminPayouts";
 import AdminReports from "./pages/AdminReports";
+import AdminSessionDisputes from "./pages/AdminSessionDisputes";
 import VideoCallPage from "./pages/VideoCallPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
@@ -103,6 +105,10 @@ const router = createBrowserRouter([
         element: <PurchaseHistory />,
       },
       {
+        path: "/meetings/history",
+        element: <SessionHistory />,
+      },
+      {
         path: "/meetings/:id/call",
         element: <VideoCallPage />,
       },
@@ -159,6 +165,14 @@ const router = createBrowserRouter([
         element: (
           <AdminRoute>
             <AdminReports />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/session-disputes",
+        element: (
+          <AdminRoute>
+            <AdminSessionDisputes />
           </AdminRoute>
         ),
       },

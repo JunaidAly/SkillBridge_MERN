@@ -1,21 +1,18 @@
-import { CreditWallet, CreditTransaction } from '../models/Credit.js';
+import { CreditWallet } from '../models/Credit.js';
 import { notifyUser } from './notify.js';
-import { INITIAL_FREE_CREDITS, LOW_BALANCE_THRESHOLD } from '../config/sessionCreditRates.js';
+import { LOW_BALANCE_THRESHOLD } from '../config/sessionCreditRates.js';
 
+// New users start with an empty, cashable wallet - no bonus credits. Their
+// one free session as a student is handled separately (Meeting.isFreeTrialSession),
+// which never touches the wallet/payout system at all. See User.freeTrialSessionUsed.
 export async function getOrCreateWallet(userId) {
   let wallet = await CreditWallet.findOne({ user: userId });
   if (!wallet) {
     wallet = await CreditWallet.create({
       user: userId,
-      balance: INITIAL_FREE_CREDITS,
-      totalEarned: INITIAL_FREE_CREDITS,
+      balance: 0,
+      totalEarned: 0,
       totalSpent: 0,
-    });
-    await CreditTransaction.create({
-      user: userId,
-      type: 'bonus',
-      amount: INITIAL_FREE_CREDITS,
-      description: 'Welcome bonus credits',
     });
   }
   return wallet;
