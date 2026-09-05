@@ -25,6 +25,15 @@ const learningSkillSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  // Completed learning sessions for this specific skill - the only thing
+  // `progress` is actually derived from (see PROGRESS_PER_SESSION in
+  // utils/meetingCompletion.js). Not user-editable.
+  sessions: {
+    type: Number,
+    default: 0,
+  },
+  // Auto-computed from `sessions` each time a session for this skill
+  // completes - never set directly by the user.
   progress: {
     type: Number,
     default: 0,

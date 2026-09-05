@@ -211,7 +211,7 @@ router.delete('/me/skills/teaching/:skillId', authenticateToken, async (req, res
 // Add skill to learn
 router.post('/me/skills/learning', authenticateToken, async (req, res) => {
   try {
-    const { name, progress } = req.body;
+    const { name } = req.body;
     if (!name) {
       return res.status(400).json({ message: 'Skill name is required' });
     }
@@ -230,51 +230,14 @@ router.post('/me/skills/learning', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Skill already exists' });
     }
 
-    user.skillsLearning.push({ name, progress: progress || 0 });
+    // sessions/progress always start at 0 - progress is auto-derived from
+    // completed sessions in this skill, never user-settable.
+    user.skillsLearning.push({ name });
     await user.save();
 
     res.json({
       success: true,
       message: 'Learning goal added successfully',
-      skillsLearning: user.skillsLearning,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Update learning skill progress
-router.put('/me/skills/learning/:skillId', authenticateToken, async (req, res) => {
-  try {
-    const { progress } = req.body;
-    if (progress === undefined || progress < 0 || progress > 100) {
-      return res.status(400).json({ message: 'Progress must be between 0 and 100' });
-    }
-
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const skillIdParam = req.params.skillId;
-    const skillIndex = user.skillsLearning.findIndex(skill => {
-      // Handle object format with _id
-      if (skill._id) {
-        return skill._id.toString() === skillIdParam;
-      }
-      return false;
-    });
-
-    if (skillIndex === -1) {
-      return res.status(404).json({ message: 'Skill not found' });
-    }
-
-    user.skillsLearning[skillIndex].progress = progress;
-    await user.save();
-
-    res.json({
-      success: true,
-      message: 'Progress updated successfully',
       skillsLearning: user.skillsLearning,
     });
   } catch (error) {

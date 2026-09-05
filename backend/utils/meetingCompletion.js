@@ -8,6 +8,11 @@ import { CREDITS_PER_TEACHING_SESSION, CREDITS_PER_LEARNING_SESSION } from '../c
 // How long either participant has to report a no-show before credits finalize.
 const DISPUTE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+// A learning goal's progress is auto-derived from completed sessions in that
+// skill, not user-editable - this many percentage points per session, capped
+// at 100 (i.e. 10 completed sessions = "mastered").
+const PROGRESS_PER_SESSION = 10;
+
 // A meeting's sessionType is always taken from the creator's own perspective
 // at booking time (see frontend SchedulePanel.jsx). This is the single source
 // of truth for "who is teaching vs learning" - reuse it everywhere instead of
@@ -44,6 +49,14 @@ export async function updateUserStatsForMeeting(meeting) {
   if (learnerId) {
     const learner = await User.findById(learnerId);
     if (learner) {
+      const skillIndex = learner.skillsLearning.findIndex(
+        (s) => s.name.toLowerCase() === meeting.skill.toLowerCase()
+      );
+      if (skillIndex >= 0) {
+        const sessions = (learner.skillsLearning[skillIndex].sessions || 0) + 1;
+        learner.skillsLearning[skillIndex].sessions = sessions;
+        learner.skillsLearning[skillIndex].progress = Math.min(100, sessions * PROGRESS_PER_SESSION);
+      }
       learner.stats.sessionsLearned = (learner.stats.sessionsLearned || 0) + 1;
       await learner.save();
     }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe, BadgeCheck, CalendarPlus } from "lucide-react";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe, CalendarPlus, BadgeCheck } from "lucide-react";
 import Button from "../../ui/Button";
 import Pagination from "../../ui/Pagination";
 import { createConversation } from "../../store/chatSlice";
@@ -273,7 +273,7 @@ function AIRecommendations() {
                     <h3 className="font-family-poppins text-lg font-semibold text-black flex items-center gap-1.5">
                       {teacher.name}
                       {teacherData?.verificationStatus === "verified" && (
-                        <BadgeCheck className="text-teal shrink-0" size={16} aria-label="Verified teacher" />
+                        <BadgeCheck className="text-blue-500 shrink-0" size={18} fill="currentColor" stroke="white" strokeWidth={2} aria-label="Verified teacher" />
                       )}
                     </h3>
                     <p className="font-family-poppins text-sm text-gray mb-2">

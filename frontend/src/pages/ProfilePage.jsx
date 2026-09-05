@@ -14,7 +14,6 @@ import {
   removeTeachingSkill,
   removeLearningSkill,
   removeCertification,
-  updateLearningProgress,
   addCertification,
   submitVerification,
 } from "../store/profileSlice";
@@ -43,10 +42,6 @@ function ProfilePage() {
 
   const handleRemoveLearningSkill = (skillId) => {
     dispatch(removeLearningSkill(skillId));
-  };
-
-  const handleProgressChange = (skillId, progress) => {
-    dispatch(updateLearningProgress({ skillId, progress: parseInt(progress) }));
   };
 
   const handleRemoveCertification = (certId) => {
@@ -319,6 +314,7 @@ function ProfilePage() {
                 const skillName = typeof skill === 'string' ? skill : skill.name;
                 const skillId = typeof skill === 'string' ? skill : skill._id;
                 const skillProgress = typeof skill === 'object' ? (skill.progress || 0) : 0;
+                const skillSessions = typeof skill === 'object' ? (skill.sessions || 0) : 0;
 
                 return (
                   <div
@@ -326,9 +322,14 @@ function ProfilePage() {
                     className="p-5 bg-teal/10 shadow-xl rounded-2xl"
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <p className="font-family-poppins font-medium text-black">
-                        {skillName}
-                      </p>
+                      <div>
+                        <p className="font-family-poppins font-medium text-black">
+                          {skillName}
+                        </p>
+                        <p className="font-family-poppins text-xs text-gray mt-0.5">
+                          {skillSessions} session{skillSessions === 1 ? "" : "s"} completed
+                        </p>
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="font-family-poppins text-sm text-gray">
                           {skillProgress}%
@@ -341,25 +342,12 @@ function ProfilePage() {
                         </button>
                       </div>
                     </div>
-                    {/* Progress Bar */}
-                    <div className="relative">
-                      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-teal rounded-full transition-all duration-300"
-                          style={{ width: `${skillProgress}%` }}
-                        />
-                      </div>
-                      {/* Progress Slider - only show for object format with _id */}
-                      {typeof skill === 'object' && skill._id && (
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={skillProgress}
-                          onChange={(e) => handleProgressChange(skill._id, e.target.value)}
-                          className="absolute inset-0 w-full h-2 opacity-0 cursor-pointer"
-                        />
-                      )}
+                    {/* Progress Bar - auto-derived from completed sessions in this skill, not editable */}
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-teal rounded-full transition-all duration-300"
+                        style={{ width: `${skillProgress}%` }}
+                      />
                     </div>
                   </div>
                 );

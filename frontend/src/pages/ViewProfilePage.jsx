@@ -150,7 +150,7 @@ function ViewProfilePage() {
               <h1 className="font-family-poppins text-2xl font-bold text-black flex items-center gap-2">
                 {user.name}
                 {user.verificationStatus === "verified" && (
-                  <BadgeCheck className="text-teal shrink-0" size={20} aria-label="Verified teacher" />
+                  <BadgeCheck className="text-blue-500 shrink-0" size={24} fill="currentColor" stroke="white" strokeWidth={2} aria-label="Verified teacher" />
                 )}
               </h1>
               <Button

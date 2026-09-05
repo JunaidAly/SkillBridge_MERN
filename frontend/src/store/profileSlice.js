@@ -126,20 +126,6 @@ export const removeLearningSkill = createAsyncThunk(
   }
 );
 
-// Update learning skill progress
-export const updateLearningProgress = createAsyncThunk(
-  'profile/updateLearningProgress',
-  async ({ skillId, progress }, { rejectWithValue }) => {
-    try {
-      const res = await apiClient.put(`/users/me/skills/learning/${skillId}`, { progress });
-      return res.data.skillsLearning;
-    } catch (err) {
-      const message = err.response?.data?.message || 'Failed to update progress';
-      return rejectWithValue(message);
-    }
-  }
-);
-
 // Add certification
 export const addCertification = createAsyncThunk(
   'profile/addCertification',
@@ -319,12 +305,6 @@ const profileSlice = createSlice({
       })
       // Remove learning skill
       .addCase(removeLearningSkill.fulfilled, (state, action) => {
-        if (state.profile) {
-          state.profile.skillsLearning = action.payload;
-        }
-      })
-      // Update learning progress
-      .addCase(updateLearningProgress.fulfilled, (state, action) => {
         if (state.profile) {
           state.profile.skillsLearning = action.payload;
         }
