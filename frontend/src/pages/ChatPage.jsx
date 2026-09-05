@@ -5,7 +5,14 @@ import ChatList from "../components/Chat/ChatList";
 import ChatMessages from "../components/Chat/ChatMessages";
 import SchedulePanel from "../components/Chat/SchedulePanel";
 import ScheduleSessionModal from "../components/Modal/ScheduleSessionModal";
-import { fetchConversations, upsertMessage, updateUnreadCount } from "../store/chatSlice";
+import {
+  fetchConversations,
+  upsertMessage,
+  updateUnreadCount,
+  markMessagesDelivered,
+  markMessagesReadReceipt,
+} from "../store/chatSlice";
+import { setOnlineUsers, userWentOnline, userWentOffline } from "../store/presenceSlice";
 import { getSocket } from "../socket";
 
 function ChatPage() {
@@ -56,6 +63,34 @@ function ChatPage() {
     };
   }, [dispatch, user, selectedChat, conversations]);
 
+  // Presence (online/offline) and delivered/read tick updates - global for as
+  // long as the chat page is mounted, independent of which chat is open.
+  useEffect(() => {
+    const socket = getSocket();
+
+    const onOnlineUsers = ({ userIds }) => dispatch(setOnlineUsers(userIds));
+    const onUserOnline = ({ userId }) => dispatch(userWentOnline(userId));
+    const onUserOffline = ({ userId, lastSeen }) => dispatch(userWentOffline({ userId, lastSeen }));
+    const onMessagesDelivered = ({ conversationId, userId }) =>
+      dispatch(markMessagesDelivered({ conversationId, userId }));
+    const onMessagesRead = ({ conversationId, readerId }) =>
+      dispatch(markMessagesReadReceipt({ conversationId, readerId }));
+
+    socket.on("onlineUsers", onOnlineUsers);
+    socket.on("userOnline", onUserOnline);
+    socket.on("userOffline", onUserOffline);
+    socket.on("messagesDelivered", onMessagesDelivered);
+    socket.on("messagesRead", onMessagesRead);
+
+    return () => {
+      socket.off("onlineUsers", onOnlineUsers);
+      socket.off("userOnline", onUserOnline);
+      socket.off("userOffline", onUserOffline);
+      socket.off("messagesDelivered", onMessagesDelivered);
+      socket.off("messagesRead", onMessagesRead);
+    };
+  }, [dispatch]);
+
   // Format conversations with name and avatar from participants
   const formattedConversations = useMemo(() => {
     const meId = user?.id;
@@ -66,6 +101,7 @@ function ChatPage() {
         name: other?.name || "Conversation",
         avatar: other?.avatar || null,
         otherUserId: other?._id || other?.id,
+        otherUserLastSeen: other?.lastSeen || null,
       };
     });
   }, [conversations, user]);

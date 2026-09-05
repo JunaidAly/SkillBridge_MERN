@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet, Flag, Ban, ShieldCheck } from "lucide-react";
+import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet, Flag, Ban, ShieldCheck, Check, CheckCheck } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchMessages, upsertMessage, replaceMessage, markConversationAsRead, deleteConversation, sendAttachment } from "../../store/chatSlice";
 import { blockUser, unblockUser, reportUser } from "../../store/profileSlice";
@@ -35,6 +35,7 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
   const { messagesByConversation, messagesLoading } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
   const { profile } = useSelector((state) => state.profile);
+  const { onlineUserIds, lastSeenByUser } = useSelector((state) => state.presence);
 
   const otherUserId = chat?.otherUserId;
   const isBlocked = Boolean(
@@ -54,26 +55,31 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Format last seen time
+  const isOtherOnline = Boolean(otherUserId && onlineUserIds.includes(String(otherUserId)));
+
+  // Format last seen time from real presence data (falls back to the
+  // conversation's stored lastSeen if we haven't received a live update yet).
   const getLastSeenText = () => {
-    const lastMessage = messages[messages.length - 1];
-    if (!lastMessage) return "Recently";
-    
-    const lastMessageTime = new Date(lastMessage.createdAt);
+    if (isOtherOnline) return "Online";
+
+    const lastSeenRaw = (otherUserId && lastSeenByUser[String(otherUserId)]) || chat?.otherUserLastSeen;
+    if (!lastSeenRaw) return "Offline";
+
+    const lastSeenTime = new Date(lastSeenRaw);
     const now = new Date();
-    const diffMs = now - lastMessageTime;
+    const diffMs = now - lastSeenTime;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return "Active now";
+
+    if (diffMins < 1) return "Last seen just now";
     if (diffMins === 1) return "Last seen 1 min ago";
     if (diffMins < 60) return `Last seen ${diffMins} mins ago`;
     if (diffHours === 1) return "Last seen 1 hour ago";
     if (diffHours < 24) return `Last seen ${diffHours} hours ago`;
     if (diffDays === 1) return "Last seen yesterday";
     if (diffDays < 7) return `Last seen ${diffDays} days ago`;
-    return lastMessageTime.toLocaleDateString();
+    return `Last seen ${lastSeenTime.toLocaleDateString()}`;
   };
 
   useEffect(() => {
@@ -109,16 +115,21 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
 
   const displayMessages = useMemo(() => {
     const meId = user?.id;
-    return (messages || []).map((m) => ({
-      _id: m._id,
-      text: m.text,
-      time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isOwn: String(m.sender?._id || m.sender?.id) === String(meId),
-      read: true,
-      isAttachment: m.messageType === "attachment",
-      attachment: m.messageType === "attachment" ? m.metadata : null,
-    }));
-  }, [messages, user]);
+    return (messages || []).map((m) => {
+      const isOwn = String(m.sender?._id || m.sender?.id) === String(meId);
+      const isRead = otherUserId && (m.readBy || []).map(String).includes(String(otherUserId));
+      const isDelivered = isRead || (otherUserId && (m.deliveredTo || []).map(String).includes(String(otherUserId)));
+      return {
+        _id: m._id,
+        text: m.text,
+        time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isOwn,
+        status: isRead ? "read" : isDelivered ? "delivered" : "sent",
+        isAttachment: m.messageType === "attachment",
+        attachment: m.messageType === "attachment" ? m.metadata : null,
+      };
+    });
+  }, [messages, user, otherUserId]);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -277,17 +288,22 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
           >
             <ArrowLeft size={20} />
           </button>
-          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-            {chat.avatar ? (
-              <img
-                src={chat.avatar}
-                alt={chat.name || 'User'}
-                className="w-full h-full rounded-full object-cover"
-              />
-            ) : (
-              <span className="text-gray font-medium">
-                {chat.name?.charAt(0) || chat.participants?.[0]?.name?.charAt(0) || 'U'}
-              </span>
+          <div className="relative w-10 h-10 shrink-0">
+            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+              {chat.avatar ? (
+                <img
+                  src={chat.avatar}
+                  alt={chat.name || 'User'}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <span className="text-gray font-medium">
+                  {chat.name?.charAt(0) || chat.participants?.[0]?.name?.charAt(0) || 'U'}
+                </span>
+              )}
+            </div>
+            {isOtherOnline && (
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />
             )}
           </div>
           <div>
@@ -432,8 +448,15 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
                 }`}
               >
                 <span className="font-family-poppins text-xs">{msg.time}</span>
-                {msg.isOwn && msg.read && (
-                  <span className="text-xs">✓</span>
+                {msg.isOwn && (
+                  msg.status === "sent" ? (
+                    <Check size={14} />
+                  ) : (
+                    <CheckCheck
+                      size={14}
+                      className={msg.status === "read" ? "text-sky-400" : ""}
+                    />
+                  )
                 )}
               </div>
             </div>

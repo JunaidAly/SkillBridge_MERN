@@ -74,6 +74,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    if (user.isSuspended) {
+      return res.status(403).json({ message: 'Your account has been suspended. Contact support for help.' });
+    }
+
     // Generate and send verification code
     const code = generateCode();
     await VerificationCode.create({
@@ -133,6 +137,10 @@ router.post('/google', async (req, res) => {
       });
     }
 
+    if (user.isSuspended) {
+      return res.status(403).json({ message: 'Your account has been suspended. Contact support for help.' });
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id },
@@ -187,6 +195,10 @@ router.post('/facebook', async (req, res) => {
       });
     }
 
+    if (user.isSuspended) {
+      return res.status(403).json({ message: 'Your account has been suspended. Contact support for help.' });
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id },
@@ -238,6 +250,10 @@ router.post('/verify', async (req, res) => {
     const user = await User.findById(verification.userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isSuspended) {
+      return res.status(403).json({ message: 'Your account has been suspended. Contact support for help.' });
     }
 
     // Generate JWT token

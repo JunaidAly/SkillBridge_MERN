@@ -17,6 +17,7 @@ import AdminAuditLog from "./pages/AdminAuditLog";
 import AdminVerifications from "./pages/AdminVerifications";
 import AdminRefunds from "./pages/AdminRefunds";
 import AdminPayouts from "./pages/AdminPayouts";
+import AdminReports from "./pages/AdminReports";
 import VideoCallPage from "./pages/VideoCallPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
@@ -150,6 +151,14 @@ const router = createBrowserRouter([
         element: (
           <AdminRoute>
             <AdminPayouts />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: "/admin/reports",
+        element: (
+          <AdminRoute>
+            <AdminReports />
           </AdminRoute>
         ),
       },

@@ -14,6 +14,10 @@ import {
   getPayoutRequests,
   reviewPayoutRequest,
   markPayoutPaid,
+  getReports,
+  reviewReport,
+  suspendUser,
+  unsuspendUser,
 } from '../controllers/admin.controller.js';
 
 const router = express.Router();
@@ -30,5 +34,9 @@ router.patch('/refund-requests/:id', authenticateToken, requireAdmin, reviewRefu
 router.get('/payout-requests', authenticateToken, requireAdmin, getPayoutRequests);
 router.patch('/payout-requests/:id/review', authenticateToken, requireAdmin, reviewPayoutRequest);
 router.patch('/payout-requests/:id/mark-paid', authenticateToken, requireAdmin, markPayoutPaid);
+router.get('/reports', authenticateToken, requireAdmin, getReports);
+router.patch('/reports/:reportId', authenticateToken, requireAdmin, reviewReport);
+router.patch('/users/:userId/suspend', authenticateToken, requireAdmin, suspendUser);
+router.patch('/users/:userId/unsuspend', authenticateToken, requireAdmin, unsuspendUser);
 
 export default router;

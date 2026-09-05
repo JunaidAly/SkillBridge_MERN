@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
 import { Bell, Trash2 } from "lucide-react";
 import apiClient from "../../api/client";
-import { getSocket } from "../../socket";
+import { getSocket, disconnectSocket } from "../../socket";
+import { logout } from "../../store/authSlice";
+import { useToast } from "../../ui/Toast";
 
 function timeAgo(dateString) {
   const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
@@ -18,6 +21,8 @@ function timeAgo(dateString) {
 
 function NotificationBell() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const toast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -45,8 +50,20 @@ function NotificationBell() {
       setUnreadCount((prev) => prev + 1);
     };
     socket.on("newNotification", handleNewNotification);
-    return () => socket.off("newNotification", handleNewNotification);
-  }, []);
+
+    const handleAccountSuspended = (data) => {
+      toast.error(data?.reason ? `Account suspended: ${data.reason}` : "Your account has been suspended.");
+      dispatch(logout());
+      disconnectSocket();
+      navigate("/login", { replace: true });
+    };
+    socket.on("accountSuspended", handleAccountSuspended);
+
+    return () => {
+      socket.off("newNotification", handleNewNotification);
+      socket.off("accountSuspended", handleAccountSuspended);
+    };
+  }, [dispatch, navigate, toast]);
 
   useEffect(() => {
     if (!open) {

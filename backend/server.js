@@ -22,10 +22,12 @@ import verificationRoutes from './routes/verification.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 import Conversation from './models/Conversation.js';
 import Message from './models/Message.js';
+import User from './models/User.js';
 import { setSocketIO, notifyUser } from './utils/notify.js';
 import { startMeetingReminderJob } from './jobs/meetingReminders.js';
 import { startMeetingCompletionJob } from './jobs/completeMeetings.js';
 import { isBlockedBetween } from './utils/blocking.js';
+import { addOnlineSocket, removeOnlineSocket, isUserOnline, getOnlineUserIds } from './utils/presence.js';
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -112,8 +114,10 @@ io.use((socket, next) => {
 
     if (!token) return next(new Error('Access token required'));
 
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET, async (err, user) => {
       if (err) return next(new Error('Invalid or expired token'));
+      const dbUser = await User.findById(user.userId).select('isSuspended');
+      if (dbUser?.isSuspended) return next(new Error('Account suspended'));
       socket.user = user;
       next();
     });
@@ -127,7 +131,14 @@ io.on('connection', (socket) => {
 
   // Personal room so any backend code can push a notification to this user
   // regardless of which conversation rooms they're in.
-  if (userId) socket.join(`user:${userId}`);
+  if (userId) {
+    socket.join(`user:${userId}`);
+
+    const wasOffline = addOnlineSocket(userId, socket.id);
+    if (wasOffline) io.emit('userOnline', { userId: String(userId) });
+
+    socket.emit('onlineUsers', { userIds: getOnlineUserIds() });
+  }
 
   socket.on('joinConversation', async ({ conversationId }) => {
     if (!conversationId) return;
@@ -135,6 +146,16 @@ io.on('connection', (socket) => {
     if (!conv) return;
     if (!conv.participants.map(String).includes(String(userId))) return;
     socket.join(`conv:${conversationId}`);
+
+    // Joining a conversation means this user's client has received/rendered
+    // it, so mark any messages sent to them as delivered.
+    const result = await Message.updateMany(
+      { conversation: conversationId, sender: { $ne: userId }, deliveredTo: { $ne: userId } },
+      { $addToSet: { deliveredTo: userId } }
+    );
+    if (result.modifiedCount > 0) {
+      io.to(`conv:${conversationId}`).emit('messagesDelivered', { conversationId, userId: String(userId) });
+    }
   });
 
   socket.on('sendMessage', async ({ conversationId, text }, ack) => {
@@ -155,6 +176,7 @@ io.on('connection', (socket) => {
         sender: userId,
         text: text.trim(),
         readBy: [userId],
+        deliveredTo: otherParticipantId && isUserOnline(otherParticipantId) ? [otherParticipantId] : [],
       });
       conv.lastMessage = message._id;
       await conv.save();
@@ -175,6 +197,20 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       if (ack) ack({ ok: false, error: err.message });
+    }
+  });
+
+  socket.on('disconnect', async () => {
+    if (!userId) return;
+    const wentOffline = removeOnlineSocket(userId, socket.id);
+    if (wentOffline) {
+      const lastSeen = new Date();
+      try {
+        await User.findByIdAndUpdate(userId, { lastSeen });
+      } catch (e) {
+        // non-fatal - presence broadcast still goes out even if the DB write fails
+      }
+      io.emit('userOffline', { userId: String(userId), lastSeen: lastSeen.toISOString() });
     }
   });
 });

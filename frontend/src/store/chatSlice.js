@@ -163,6 +163,35 @@ const chatSlice = createSlice({
         state.conversations[idx].updatedAt = message.createdAt || new Date().toISOString();
       }
     },
+    // Live tick updates: mark every message not authored by `userId` as
+    // delivered/read to them (1:1 conversations only, so "not authored by
+    // them" is equivalent to "sent to them").
+    markMessagesDelivered: (state, action) => {
+      const { conversationId, userId } = action.payload;
+      const messages = state.messagesByConversation[conversationId];
+      if (!messages) return;
+      const uid = String(userId);
+      for (const m of messages) {
+        const senderId = String(m.sender?._id || m.sender?.id || m.sender);
+        if (senderId === uid) continue;
+        m.deliveredTo = m.deliveredTo || [];
+        if (!m.deliveredTo.map(String).includes(uid)) m.deliveredTo.push(userId);
+      }
+    },
+    markMessagesReadReceipt: (state, action) => {
+      const { conversationId, readerId } = action.payload;
+      const messages = state.messagesByConversation[conversationId];
+      if (!messages) return;
+      const uid = String(readerId);
+      for (const m of messages) {
+        const senderId = String(m.sender?._id || m.sender?.id || m.sender);
+        if (senderId === uid) continue;
+        m.readBy = m.readBy || [];
+        if (!m.readBy.map(String).includes(uid)) m.readBy.push(readerId);
+        m.deliveredTo = m.deliveredTo || [];
+        if (!m.deliveredTo.map(String).includes(uid)) m.deliveredTo.push(readerId);
+      }
+    },
     updateUnreadCount: (state, action) => {
       const { conversationId, unreadCount } = action.payload;
       const idx = state.conversations.findIndex((c) => c._id === conversationId);
@@ -251,7 +280,16 @@ const chatSlice = createSlice({
   },
 });
 
-export const { upsertMessage, replaceMessage, removeMessage, updateUnreadCount, setError, clearChatError } = chatSlice.actions;
+export const {
+  upsertMessage,
+  replaceMessage,
+  removeMessage,
+  markMessagesDelivered,
+  markMessagesReadReceipt,
+  updateUnreadCount,
+  setError,
+  clearChatError,
+} = chatSlice.actions;
 export default chatSlice.reducer;
 
 

@@ -5,6 +5,7 @@ import AdminAuditLog from '../models/AdminAuditLog.js';
 import RefundRequest from '../models/RefundRequest.js';
 import PayoutRequest from '../models/PayoutRequest.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
+import Report from '../models/Report.js';
 import { logAdminAction } from '../utils/auditLog.js';
 import { notifyUser } from '../utils/notify.js';
 import {
@@ -26,6 +27,7 @@ const DEFAULT_ANALYTICS_DAYS = 30;
 // Valid values are read from the schema itself so this never drifts from the
 // actual User model (rather than hardcoding a role list here).
 const VALID_ROLES = User.schema.path('role').enumValues;
+const VALID_REPORT_STATUSES = Report.schema.path('status').enumValues;
 
 export const getAllTransactions = async (req, res) => {
   try {
@@ -112,7 +114,7 @@ export const getAllUsers = async (req, res) => {
 
     const [users, totalCount] = await Promise.all([
       User.find(filter)
-        .select('name email role createdAt')
+        .select('name email role createdAt isSuspended suspendedAt suspendedReason')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -126,11 +128,185 @@ export const getAllUsers = async (req, res) => {
         email: u.email,
         role: u.role,
         createdAt: u.createdAt,
+        isSuspended: u.isSuspended,
+        suspendedAt: u.suspendedAt,
+        suspendedReason: u.suspendedReason,
       })),
       page,
       totalPages: Math.max(1, Math.ceil(totalCount / limit)),
       totalCount,
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Disconnects any currently-open sockets for a user and tells them why, so a
+// suspension takes effect immediately instead of waiting for their next
+// reconnect. Safe no-op if the app isn't set up with socket.io (e.g. tests).
+async function forceDisconnectUser(req, userId, reason) {
+  const io = req.app.get('io');
+  if (!io) return;
+  io.to(`user:${userId}`).emit('accountSuspended', { reason });
+  const sockets = await io.in(`user:${userId}`).fetchSockets();
+  for (const s of sockets) s.disconnect(true);
+}
+
+export const suspendUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+
+    if (req.user.userId === userId) {
+      return res.status(400).json({ message: 'You cannot suspend your own account.' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role === 'admin') {
+      return res.status(400).json({ message: 'Cannot suspend an admin account.' });
+    }
+
+    user.isSuspended = true;
+    user.suspendedAt = new Date();
+    user.suspendedReason = reason?.trim() || null;
+    await user.save();
+
+    await forceDisconnectUser(req, user._id, user.suspendedReason);
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: 'user_suspended',
+      targetUserId: user._id,
+      details: { reason: user.suspendedReason },
+    });
+
+    res.json({
+      user: {
+        id: user._id.toString(),
+        isSuspended: user.isSuspended,
+        suspendedAt: user.suspendedAt,
+        suspendedReason: user.suspendedReason,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const unsuspendUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.isSuspended = false;
+    user.suspendedAt = null;
+    user.suspendedReason = null;
+    await user.save();
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: 'user_unsuspended',
+      targetUserId: user._id,
+      details: null,
+    });
+
+    res.json({
+      user: {
+        id: user._id.toString(),
+        isSuspended: user.isSuspended,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getReports = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_LIMIT));
+    const status = req.query.status;
+
+    const filter = {};
+    if (status) {
+      if (!VALID_REPORT_STATUSES.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${VALID_REPORT_STATUSES.join(', ')}` });
+      }
+      filter.status = status;
+    }
+
+    const [reports, totalCount] = await Promise.all([
+      Report.find(filter)
+        .populate('reporter', 'name email')
+        .populate('reportedUser', 'name email isSuspended')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Report.countDocuments(filter),
+    ]);
+
+    res.json({
+      reports: reports.map((r) => ({
+        id: r._id.toString(),
+        reason: r.reason,
+        status: r.status,
+        createdAt: r.createdAt,
+        reporter: r.reporter && { id: r.reporter._id.toString(), name: r.reporter.name, email: r.reporter.email },
+        reportedUser: r.reportedUser && {
+          id: r.reportedUser._id.toString(),
+          name: r.reportedUser.name,
+          email: r.reportedUser.email,
+          isSuspended: r.reportedUser.isSuspended,
+        },
+      })),
+      page,
+      totalPages: Math.max(1, Math.ceil(totalCount / limit)),
+      totalCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const reviewReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const { action } = req.body; // 'block' | 'dismiss'
+
+    if (!['block', 'dismiss'].includes(action)) {
+      return res.status(400).json({ message: "action must be 'block' or 'dismiss'" });
+    }
+
+    const report = await Report.findById(reportId);
+    if (!report) return res.status(404).json({ message: 'Report not found' });
+
+    if (action === 'block') {
+      const reportedUser = await User.findById(report.reportedUser);
+      if (!reportedUser) return res.status(404).json({ message: 'Reported user not found' });
+      if (reportedUser.role === 'admin') {
+        return res.status(400).json({ message: 'Cannot suspend an admin account.' });
+      }
+
+      reportedUser.isSuspended = true;
+      reportedUser.suspendedAt = new Date();
+      reportedUser.suspendedReason = `Reported: ${report.reason}`;
+      await reportedUser.save();
+      await forceDisconnectUser(req, reportedUser._id, reportedUser.suspendedReason);
+    }
+
+    report.status = action === 'block' ? 'reviewed' : 'dismissed';
+    await report.save();
+
+    await logAdminAction({
+      adminId: req.user.userId,
+      action: action === 'block' ? 'report_reviewed_blocked' : 'report_dismissed',
+      targetUserId: report.reportedUser,
+      details: { reportId: report._id.toString(), reason: report.reason },
+    });
+
+    res.json({ report: { id: report._id.toString(), status: report.status } });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

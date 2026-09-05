@@ -21,6 +21,7 @@ function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [savingUserId, setSavingUserId] = useState(null);
+  const [togglingUserId, setTogglingUserId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +66,25 @@ function AdminUsers() {
       showError(err.response?.data?.message || "Unable to update role.");
     } finally {
       setSavingUserId(null);
+    }
+  };
+
+  const handleToggleSuspend = async (userId, isSuspended) => {
+    if (!isSuspended && !window.confirm("Block this user? They'll be logged out and unable to sign back in or message anyone.")) {
+      return;
+    }
+    setTogglingUserId(userId);
+    try {
+      const action = isSuspended ? "unsuspend" : "suspend";
+      const res = await apiClient.patch(`/admin/users/${userId}/${action}`);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isSuspended: res.data.user.isSuspended } : u))
+      );
+      success(isSuspended ? "User unblocked." : "User blocked.");
+    } catch (err) {
+      showError(err.response?.data?.message || "Unable to update user.");
+    } finally {
+      setTogglingUserId(null);
     }
   };
 
@@ -121,6 +141,7 @@ function AdminUsers() {
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">User</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Joined</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Role</th>
+                    <th className="font-family-poppins text-xs text-gray font-medium pb-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -151,6 +172,24 @@ function AdminUsers() {
                               </option>
                             ))}
                           </select>
+                        </td>
+                        <td className="py-3">
+                          {u.role === "admin" ? (
+                            <span className="font-family-poppins text-xs text-gray">-</span>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleSuspend(u.id, u.isSuspended)}
+                              disabled={togglingUserId === u.id}
+                              title={u.isSuspended ? u.suspendedReason || undefined : undefined}
+                              className={`font-family-poppins text-xs font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                u.isSuspended
+                                  ? "bg-light-gray text-black hover:bg-gray-200"
+                                  : "bg-red-600 text-white hover:bg-red-700"
+                              }`}
+                            >
+                              {u.isSuspended ? "Unblock" : "Block"}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

@@ -95,6 +95,21 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user',
     },
+    // Platform-level suspension, distinct from the user-to-user `blockedUsers`
+    // relationship below - set by an admin (typically off the back of a
+    // report) to cut off login/chat access entirely.
+    isSuspended: {
+      type: Boolean,
+      default: false,
+    },
+    suspendedAt: {
+      type: Date,
+      default: null,
+    },
+    suspendedReason: {
+      type: String,
+      default: null,
+    },
     verificationStatus: {
       type: String,
       enum: ['unverified', 'pending', 'verified', 'rejected'],
@@ -163,6 +178,11 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     }],
+    // Updated when a user's last socket disconnects; used to show "last seen" text.
+    lastSeen: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

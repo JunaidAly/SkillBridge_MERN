@@ -9,6 +9,7 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
   const dispatch = useDispatch();
   const { conversations, loading } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
+  const { onlineUserIds } = useSelector((state) => state.presence);
 
   useEffect(() => {
     dispatch(fetchConversations());
@@ -82,17 +83,22 @@ function ChatList({ selectedChat, onSelectChat, onToggleMobile }) {
               }`}
             >
               {/* Avatar */}
-              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
-                {conv.avatar ? (
-                  <img
-                    src={conv.avatar}
-                    alt={conv.name}
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-gray text-lg font-medium">
-                    {conv.name?.charAt(0) || 'U'}
-                  </span>
+              <div className="relative w-12 h-12 shrink-0">
+                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                  {conv.avatar ? (
+                    <img
+                      src={conv.avatar}
+                      alt={conv.name}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-gray text-lg font-medium">
+                      {conv.name?.charAt(0) || 'U'}
+                    </span>
+                  )}
+                </div>
+                {onlineUserIds.includes(String(conv.otherUserId)) && (
+                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
                 )}
               </div>
 

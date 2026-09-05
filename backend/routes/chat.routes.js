@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { notifyUser } from '../utils/notify.js';
 import { uploadChatAttachment } from '../config/cloudinary.js';
 import { isBlockedBetween } from '../utils/blocking.js';
+import { isUserOnline } from '../utils/presence.js';
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ router.get('/conversations', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const conversations = await Conversation.find({ participants: userId })
-      .populate('participants', 'name email avatar')
+      .populate('participants', 'name email avatar lastSeen')
       .populate({
         path: 'lastMessage',
         select: 'text sender createdAt readBy messageType metadata',
@@ -62,7 +63,7 @@ router.post('/conversations', authenticateToken, async (req, res) => {
       participants: { $all: [userId, otherUserId] },
       $expr: { $eq: [{ $size: '$participants' }, 2] },
     })
-      .populate('participants', 'name email avatar')
+      .populate('participants', 'name email avatar lastSeen')
       .populate({
         path: 'lastMessage',
         select: 'text sender createdAt',
@@ -72,7 +73,7 @@ router.post('/conversations', authenticateToken, async (req, res) => {
     if (!conversation) {
       conversation = await Conversation.create({ participants: [userId, otherUserId] });
       conversation = await Conversation.findById(conversation._id)
-        .populate('participants', 'name email avatar')
+        .populate('participants', 'name email avatar lastSeen')
         .populate({
           path: 'lastMessage',
           select: 'text sender createdAt',
@@ -118,16 +119,26 @@ router.post('/conversations/:id/read', authenticateToken, async (req, res) => {
     }
 
     // Mark all unread messages in this conversation as read
-    await Message.updateMany(
+    const result = await Message.updateMany(
       {
         conversation: conversation._id,
         sender: { $ne: userId },
         readBy: { $ne: userId },
       },
       {
-        $addToSet: { readBy: userId },
+        $addToSet: { readBy: userId, deliveredTo: userId },
       }
     );
+
+    if (result.modifiedCount > 0) {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`conv:${conversation._id}`).emit('messagesRead', {
+          conversationId: String(conversation._id),
+          readerId: String(userId),
+        });
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -179,12 +190,18 @@ router.post('/conversations/:id/messages', authenticateToken, async (req, res) =
       sender: userId,
       text: text.trim(),
       readBy: [userId],
+      deliveredTo: otherParticipantId && isUserOnline(otherParticipantId) ? [otherParticipantId] : [],
     });
 
     conversation.lastMessage = message._id;
     await conversation.save();
 
     const populated = await Message.findById(message._id).populate('sender', 'name email avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`conv:${conversation._id}`).emit('newMessage', { message: populated });
+    }
 
     const recipients = conversation.participants.map(String).filter((p) => p !== String(userId));
     for (const recipientId of recipients) {
@@ -231,6 +248,7 @@ router.post('/conversations/:id/attachments', authenticateToken, uploadChatAttac
         fileSize: req.file.size,
       },
       readBy: [userId],
+      deliveredTo: otherParticipantId && isUserOnline(otherParticipantId) ? [otherParticipantId] : [],
     });
 
     conversation.lastMessage = message._id;

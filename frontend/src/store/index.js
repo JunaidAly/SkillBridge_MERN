@@ -7,6 +7,7 @@ import usersReducer from './usersSlice';
 import feedbackReducer from './feedbackSlice';
 import creditsReducer from './creditsSlice';
 import recommendationsReducer from './recommendationsSlice';
+import presenceReducer from './presenceSlice';
 
 const store = configureStore({
   reducer: {
@@ -18,6 +19,7 @@ const store = configureStore({
     feedback: feedbackReducer,
     credits: creditsReducer,
     recommendations: recommendationsReducer,
+    presence: presenceReducer,
   },
 });
 
