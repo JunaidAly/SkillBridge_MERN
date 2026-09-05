@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet } from "lucide-react";
+import { Phone, MoreVertical, Send, Smile, ArrowLeft, Trash2, CalendarPlus, Paperclip, FileText, Download, Loader2, MessageCircle, Wallet, Flag, Ban, ShieldCheck } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchMessages, upsertMessage, markConversationAsRead, deleteConversation, sendAttachment } from "../../store/chatSlice";
+import { fetchMessages, upsertMessage, replaceMessage, markConversationAsRead, deleteConversation, sendAttachment } from "../../store/chatSlice";
+import { blockUser, unblockUser, reportUser } from "../../store/profileSlice";
 import { getSocket } from "../../socket";
 import { useToast } from "../../ui/Toast";
+import ReportUserModal from "../Modal/ReportUserModal";
 import EmojiPicker from "emoji-picker-react";
 
 const MAX_ATTACHMENT_SIZE = 15 * 1024 * 1024; // matches backend uploadChatAttachment limit
@@ -21,6 +23,9 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [isTogglingBlock, setIsTogglingBlock] = useState(false);
   const menuRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -29,6 +34,12 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
   const toast = useToast();
   const { messagesByConversation, messagesLoading } = useSelector((state) => state.chat);
   const { user } = useSelector((state) => state.auth);
+  const { profile } = useSelector((state) => state.profile);
+
+  const otherUserId = chat?.otherUserId;
+  const isBlocked = Boolean(
+    otherUserId && profile?.blockedUsers?.some((id) => String(id) === String(otherUserId))
+  );
 
   const conversationId = chat?._id;
   const rawMessages = messagesByConversation[conversationId];
@@ -152,10 +163,13 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
       
       socket.emit("sendMessage", { conversationId, text }, (ack) => {
         if (ack?.ok && ack?.message) {
-          // Replace temporary message with real one from server
+          // Reconcile the temp bubble with the real, server-saved message by
+          // its exact tempId - handles the broadcast-vs-ack race without
+          // risking a duplicate (see replaceMessage in chatSlice.js).
           dispatch(
-            upsertMessage({
+            replaceMessage({
               conversationId,
+              tempId,
               message: ack.message,
             })
           );
@@ -179,6 +193,44 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
   const handleDeleteChat = () => {
     setShowMenu(false);
     setShowDeleteConfirm(true);
+  };
+
+  const handleReportClick = () => {
+    setShowMenu(false);
+    setShowReportModal(true);
+  };
+
+  const handleSubmitReport = async (reason) => {
+    if (!otherUserId) return;
+    setIsSubmittingReport(true);
+    try {
+      await dispatch(reportUser({ userId: otherUserId, reason, conversationId })).unwrap();
+      toast.success("Report submitted. Our team will review it.");
+      setShowReportModal(false);
+    } catch (err) {
+      toast.error(err || "Failed to submit report");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
+  const handleToggleBlock = async () => {
+    if (!otherUserId) return;
+    setShowMenu(false);
+    setIsTogglingBlock(true);
+    try {
+      if (isBlocked) {
+        await dispatch(unblockUser(otherUserId)).unwrap();
+        toast.success(`${chat?.name || "User"} unblocked.`);
+      } else {
+        await dispatch(blockUser(otherUserId)).unwrap();
+        toast.success(`${chat?.name || "User"} blocked. They can no longer message you.`);
+      }
+    } catch (err) {
+      toast.error(err || "Failed to update block status");
+    } finally {
+      setIsTogglingBlock(false);
+    }
   };
 
   const confirmDelete = () => {
@@ -273,7 +325,22 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
               <MoreVertical className="text-gray" size={20} />
             </button>
             {showMenu && (
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[150px]">
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[180px]">
+                <button
+                  onClick={handleReportClick}
+                  className="w-full px-4 py-2 text-left text-sm text-black hover:bg-gray-50 flex items-center gap-2 font-family-poppins"
+                >
+                  <Flag size={16} />
+                  Report User
+                </button>
+                <button
+                  onClick={handleToggleBlock}
+                  disabled={isTogglingBlock}
+                  className="w-full px-4 py-2 text-left text-sm text-black hover:bg-gray-50 flex items-center gap-2 font-family-poppins disabled:opacity-50"
+                >
+                  {isBlocked ? <ShieldCheck size={16} /> : <Ban size={16} />}
+                  {isBlocked ? "Unblock User" : "Block User"}
+                </button>
                 <button
                   onClick={handleDeleteChat}
                   className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 font-family-poppins"
@@ -320,10 +387,10 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
             className={`flex ${msg.isOwn ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+              className={`max-w-[70%] rounded-2xl px-4 py-3 shadow-sm ${
                 msg.isOwn
-                  ? "bg-teal/20 text-black rounded-br-sm shadow-lg"
-                  : "bg-white text-black rounded-bl-sm shadow-lg"
+                  ? "bg-teal text-white rounded-br-sm"
+                  : "bg-white text-black border border-[#E5E5E5] rounded-bl-sm"
               }`}
             >
               {msg.isAttachment && msg.attachment ? (
@@ -364,9 +431,9 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
                   msg.isOwn ? "text-white/70" : "text-gray"
                 }`}
               >
-                <span className="font-family-poppins text-black text-xs">{msg.time}</span>
+                <span className="font-family-poppins text-xs">{msg.time}</span>
                 {msg.isOwn && msg.read && (
-                  <span className="text-xs text-black">✓</span>
+                  <span className="text-xs">✓</span>
                 )}
               </div>
             </div>
@@ -460,6 +527,14 @@ function ChatMessages({ chat, onBack, onScheduleClick, onOpenSchedulePanel }) {
           </div>
         </div>
       )}
+
+      <ReportUserModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={handleSubmitReport}
+        userName={chat?.name || "this user"}
+        isSubmitting={isSubmittingReport}
+      />
     </div>
   );
 }

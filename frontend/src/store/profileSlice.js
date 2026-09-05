@@ -194,6 +194,48 @@ export const submitVerification = createAsyncThunk(
   }
 );
 
+// Block a user (prevents messages in either direction)
+export const blockUser = createAsyncThunk(
+  'profile/blockUser',
+  async (userId, { rejectWithValue }) => {
+    try {
+      await apiClient.post(`/users/${userId}/block`);
+      return userId;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to block user';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+// Unblock a previously blocked user
+export const unblockUser = createAsyncThunk(
+  'profile/unblockUser',
+  async (userId, { rejectWithValue }) => {
+    try {
+      await apiClient.post(`/users/${userId}/unblock`);
+      return userId;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to unblock user';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+// Report a user
+export const reportUser = createAsyncThunk(
+  'profile/reportUser',
+  async ({ userId, reason, conversationId }, { rejectWithValue }) => {
+    try {
+      const res = await apiClient.post(`/users/${userId}/report`, { reason, conversationId });
+      return res.data;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to submit report';
+      return rejectWithValue(message);
+    }
+  }
+);
+
 const profileSlice = createSlice({
   name: 'profile',
   initialState,
@@ -325,6 +367,20 @@ const profileSlice = createSlice({
       .addCase(submitVerification.rejected, (state, action) => {
         state.updateLoading = false;
         state.updateError = action.payload;
+      })
+      // Block user
+      .addCase(blockUser.fulfilled, (state, action) => {
+        if (state.profile) {
+          state.profile.blockedUsers = [...(state.profile.blockedUsers || []), action.payload];
+        }
+      })
+      // Unblock user
+      .addCase(unblockUser.fulfilled, (state, action) => {
+        if (state.profile) {
+          state.profile.blockedUsers = (state.profile.blockedUsers || []).filter(
+            (id) => String(id) !== String(action.payload)
+          );
+        }
       })
       // Clear profile on logout
       .addCase(logout, (state) => {

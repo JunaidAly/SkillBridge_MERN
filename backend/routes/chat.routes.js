@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { notifyUser } from '../utils/notify.js';
 import { uploadChatAttachment } from '../config/cloudinary.js';
+import { isBlockedBetween } from '../utils/blocking.js';
 
 const router = express.Router();
 
@@ -52,6 +53,10 @@ router.post('/conversations', authenticateToken, async (req, res) => {
 
     const other = await User.findById(otherUserId).select('_id');
     if (!other) return res.status(404).json({ message: 'User not found' });
+
+    if (await isBlockedBetween(userId, otherUserId)) {
+      return res.status(403).json({ message: 'Unable to message this user' });
+    }
 
     let conversation = await Conversation.findOne({
       participants: { $all: [userId, otherUserId] },
@@ -164,6 +169,11 @@ router.post('/conversations/:id/messages', authenticateToken, async (req, res) =
       return res.status(403).json({ message: 'Not allowed' });
     }
 
+    const otherParticipantId = conversation.participants.map(String).find((p) => p !== String(userId));
+    if (otherParticipantId && (await isBlockedBetween(userId, otherParticipantId))) {
+      return res.status(403).json({ message: 'Unable to message this user' });
+    }
+
     const message = await Message.create({
       conversation: conversation._id,
       sender: userId,
@@ -203,6 +213,11 @@ router.post('/conversations/:id/attachments', authenticateToken, uploadChatAttac
     if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
     if (!conversation.participants.map(String).includes(String(userId))) {
       return res.status(403).json({ message: 'Not allowed' });
+    }
+
+    const otherParticipantId = conversation.participants.map(String).find((p) => p !== String(userId));
+    if (otherParticipantId && (await isBlockedBetween(userId, otherParticipantId))) {
+      return res.status(403).json({ message: 'Unable to message this user' });
     }
 
     const message = await Message.create({

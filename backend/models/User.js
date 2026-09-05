@@ -157,6 +157,12 @@ const userSchema = new mongoose.Schema(
         max: 5,
       },
     },
+    // Users this account has blocked. Blocking prevents messages in either
+    // direction between the two accounts.
+    blockedUsers: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
   },
   {
     timestamps: true,

@@ -25,6 +25,7 @@ import Message from './models/Message.js';
 import { setSocketIO, notifyUser } from './utils/notify.js';
 import { startMeetingReminderJob } from './jobs/meetingReminders.js';
 import { startMeetingCompletionJob } from './jobs/completeMeetings.js';
+import { isBlockedBetween } from './utils/blocking.js';
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -142,6 +143,12 @@ io.on('connection', (socket) => {
       const conv = await Conversation.findById(conversationId);
       if (!conv) return;
       if (!conv.participants.map(String).includes(String(userId))) return;
+
+      const otherParticipantId = conv.participants.map(String).find((p) => p !== String(userId));
+      if (otherParticipantId && (await isBlockedBetween(userId, otherParticipantId))) {
+        if (ack) ack({ ok: false, error: 'Unable to message this user' });
+        return;
+      }
 
       const message = await Message.create({
         conversation: conversationId,

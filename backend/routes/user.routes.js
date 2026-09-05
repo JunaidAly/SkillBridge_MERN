@@ -1,5 +1,6 @@
 import express from 'express';
 import User from '../models/User.js';
+import Report from '../models/Report.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { uploadAvatar, uploadCertification, deleteFromCloudinary } from '../config/cloudinary.js';
 
@@ -34,6 +35,7 @@ router.get('/me', authenticateToken, async (req, res) => {
         verificationSubmittedAt: user.verificationSubmittedAt,
         verificationReviewedAt: user.verificationReviewedAt,
         verificationRejectionReason: user.verificationRejectionReason,
+        blockedUsers: user.blockedUsers,
       },
     });
   } catch (error) {
@@ -568,6 +570,69 @@ router.get('/:userId', authenticateToken, async (req, res) => {
         verificationStatus: user.verificationStatus,
       },
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Block another user - prevents messages in either direction between the two.
+router.post('/:userId/block', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { userId: targetId } = req.params;
+
+    if (targetId === userId) {
+      return res.status(400).json({ message: "You can't block yourself" });
+    }
+
+    const target = await User.findById(targetId).select('_id');
+    if (!target) return res.status(404).json({ message: 'User not found' });
+
+    await User.updateOne({ _id: userId }, { $addToSet: { blockedUsers: targetId } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Unblock a previously blocked user
+router.post('/:userId/unblock', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { userId: targetId } = req.params;
+
+    await User.updateOne({ _id: userId }, { $pull: { blockedUsers: targetId } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Report another user (e.g. from a chat's "..." menu)
+router.post('/:userId/report', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { userId: targetId } = req.params;
+    const { reason, conversationId } = req.body;
+
+    if (targetId === userId) {
+      return res.status(400).json({ message: "You can't report yourself" });
+    }
+    if (!reason?.trim()) {
+      return res.status(400).json({ message: 'reason is required' });
+    }
+
+    const target = await User.findById(targetId).select('_id');
+    if (!target) return res.status(404).json({ message: 'User not found' });
+
+    const report = await Report.create({
+      reporter: userId,
+      reportedUser: targetId,
+      reason: reason.trim(),
+      conversation: conversationId || null,
+    });
+
+    res.status(201).json({ success: true, reportId: report._id.toString() });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -90,53 +90,73 @@ const chatSlice = createSlice({
     error: null,
   },
   reducers: {
+    // For incoming messages (socket broadcast, fetched history). Matches only
+    // by real ID - deliberately does NOT try to fuzzy-match against optimistic
+    // temp bubbles by text+sender, since that heuristic could misfire (e.g.
+    // two quick identical messages) and leave a duplicate on screen. Temp
+    // reconciliation is handled precisely by replaceMessage below instead.
     upsertMessage: (state, action) => {
       const { conversationId, message } = action.payload;
       if (!state.messagesByConversation[conversationId]) {
         state.messagesByConversation[conversationId] = [];
       }
-      
+
       const messages = state.messagesByConversation[conversationId];
       const messageId = String(message._id || message.id);
-      
-      // Check if message already exists (by ID) to prevent duplicates
+
       const existingIndex = messages.findIndex(
         (m) => String(m._id || m.id) === messageId
       );
-      
+
       if (existingIndex >= 0) {
-        // Replace existing message (useful for replacing temp messages with real ones)
         messages[existingIndex] = message;
       } else {
-        // Check if there's a temporary message with the same text and sender that we should replace
-        // This handles the case where we have a temp message and receive the real one
-        const tempIndex = messages.findIndex(
-          (m) => {
-            const mId = String(m._id || m.id);
-            const isTemp = mId.startsWith('tmp-');
-            const sameText = m.text === message.text;
-            const sameSender = String(m.sender?._id || m.sender?.id) === String(message.sender?._id || message.sender?.id);
-            return isTemp && sameText && sameSender;
-          }
-        );
-        
-        if (tempIndex >= 0) {
-          // Replace temporary message with real one
-          messages[tempIndex] = message;
-        } else {
-          // Add new message at the end (will be sorted below)
-          messages.push(message);
-        }
+        messages.push(message);
       }
-      
-      // Sort messages by createdAt to maintain chronological order
+
       messages.sort((a, b) => {
         const timeA = new Date(a.createdAt || 0).getTime();
         const timeB = new Date(b.createdAt || 0).getTime();
         return timeA - timeB;
       });
-      
-      // Update conversation preview if present
+
+      const idx = state.conversations.findIndex((c) => c._id === conversationId);
+      if (idx >= 0) {
+        state.conversations[idx].lastMessage = message;
+        state.conversations[idx].updatedAt = message.createdAt || new Date().toISOString();
+      }
+    },
+    // Precisely reconciles one optimistic temp bubble (identified by its exact
+    // tempId) with the real, server-saved message. Handles the race where the
+    // socket broadcast for this same message already arrived and got pushed
+    // (via upsertMessage) before this ack fires - in that case we just drop
+    // the temp placeholder instead of adding a second copy of the real message.
+    replaceMessage: (state, action) => {
+      const { conversationId, tempId, message } = action.payload;
+      const messages = state.messagesByConversation[conversationId];
+      if (!messages) return;
+
+      const realId = String(message._id || message.id);
+      const realIndex = messages.findIndex((m) => String(m._id || m.id) === realId);
+      const tempIndex = messages.findIndex((m) => String(m._id || m.id) === String(tempId));
+
+      if (realIndex >= 0) {
+        messages[realIndex] = message;
+        if (tempIndex >= 0 && tempIndex !== realIndex) {
+          messages.splice(tempIndex, 1);
+        }
+      } else if (tempIndex >= 0) {
+        messages[tempIndex] = message;
+      } else {
+        messages.push(message);
+      }
+
+      messages.sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        return timeA - timeB;
+      });
+
       const idx = state.conversations.findIndex((c) => c._id === conversationId);
       if (idx >= 0) {
         state.conversations[idx].lastMessage = message;
@@ -231,7 +251,7 @@ const chatSlice = createSlice({
   },
 });
 
-export const { upsertMessage, removeMessage, updateUnreadCount, setError, clearChatError } = chatSlice.actions;
+export const { upsertMessage, replaceMessage, removeMessage, updateUnreadCount, setError, clearChatError } = chatSlice.actions;
 export default chatSlice.reducer;
 
 
