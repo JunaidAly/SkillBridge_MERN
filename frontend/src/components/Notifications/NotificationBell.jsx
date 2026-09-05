@@ -51,17 +51,36 @@ function NotificationBell() {
     };
     socket.on("newNotification", handleNewNotification);
 
-    const handleAccountSuspended = (data) => {
-      toast.error(data?.reason ? `Account suspended: ${data.reason}` : "Your account has been suspended.");
+    const forceLogout = (reason) => {
+      toast.error(reason ? `Account suspended: ${reason}` : "Your account has been suspended.");
       dispatch(logout());
       disconnectSocket();
       navigate("/login", { replace: true });
     };
+
+    // Best-effort immediate signal: the admin action force-disconnects this
+    // socket right after emitting this, so it can race the disconnect. The
+    // 'disconnect'/'connect_error' handlers below are the reliable fallback -
+    // they re-check with the server instead of trusting a single packet.
+    const handleAccountSuspended = (data) => forceLogout(data?.reason);
     socket.on("accountSuspended", handleAccountSuspended);
+
+    // Covers both "this socket just got force-disconnected by an admin" and
+    // "this socket tried to reconnect but got rejected" - either way, ask the
+    // server directly whether we're actually suspended (apiClient's response
+    // interceptor handles the logout if so) rather than assuming disconnect
+    // always means suspension (it can just as easily mean the network blipped).
+    const checkStillAllowed = () => {
+      apiClient.get("/auth/me").catch(() => {});
+    };
+    socket.on("disconnect", checkStillAllowed);
+    socket.on("connect_error", checkStillAllowed);
 
     return () => {
       socket.off("newNotification", handleNewNotification);
       socket.off("accountSuspended", handleAccountSuspended);
+      socket.off("disconnect", checkStillAllowed);
+      socket.off("connect_error", checkStillAllowed);
     };
   }, [dispatch, navigate, toast]);
 

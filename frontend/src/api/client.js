@@ -25,5 +25,21 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// If the account was suspended after this session's JWT was issued, every
+// subsequent request hits this until the token itself expires - catch it
+// here once, in one place, instead of every call site having to check.
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.data?.code === 'ACCOUNT_SUSPENDED') {
+      localStorage.removeItem('auth');
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default apiClient;
 
