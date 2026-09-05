@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import apiClient from "../api/client";
 import Pagination from "../ui/Pagination";
 import { useToast } from "../ui/Toast";
+import ConfirmModal from "../components/Modal/ConfirmModal";
 
 const STATUS_TABS = [
   { label: "Pending", value: "pending" },
@@ -22,6 +23,8 @@ function AdminReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actingReportId, setActingReportId] = useState(null);
+  const [togglingUserId, setTogglingUserId] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null); // { reportId }
 
   useEffect(() => {
     let cancelled = false;
@@ -54,18 +57,54 @@ function AdminReports() {
   };
 
   const handleReview = async (reportId, action) => {
-    if (action === "block" && !window.confirm("Block this user? They'll be logged out and unable to sign back in or message anyone.")) {
+    if (action === "block") {
+      setConfirmTarget({ reportId });
       return;
     }
     setActingReportId(reportId);
     try {
       await apiClient.patch(`/admin/reports/${reportId}`, { action });
       setReports((prev) => prev.filter((r) => r.id !== reportId));
-      success(action === "block" ? "User blocked and report marked reviewed." : "Report dismissed.");
+      success("Report dismissed.");
     } catch (err) {
       showError(err.response?.data?.message || "Unable to update report.");
     } finally {
       setActingReportId(null);
+    }
+  };
+
+  const handleConfirmBlock = async () => {
+    const reportId = confirmTarget?.reportId;
+    if (!reportId) return;
+    setActingReportId(reportId);
+    try {
+      await apiClient.patch(`/admin/reports/${reportId}`, { action: "block" });
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+      success("User blocked and report marked reviewed.");
+      setConfirmTarget(null);
+    } catch (err) {
+      showError(err.response?.data?.message || "Unable to update report.");
+    } finally {
+      setActingReportId(null);
+    }
+  };
+
+  const handleUnblock = async (userId) => {
+    setTogglingUserId(userId);
+    try {
+      await apiClient.patch(`/admin/users/${userId}/unsuspend`);
+      setReports((prev) =>
+        prev.map((r) =>
+          r.reportedUser?.id === userId
+            ? { ...r, reportedUser: { ...r.reportedUser, isSuspended: false } }
+            : r
+        )
+      );
+      success("User unblocked.");
+    } catch (err) {
+      showError(err.response?.data?.message || "Unable to unblock user.");
+    } finally {
+      setTogglingUserId(null);
     }
   };
 
@@ -121,7 +160,7 @@ function AdminReports() {
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Reported By</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Reason</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Date</th>
-                    {status === "pending" && (
+                    {status !== "dismissed" && (
                       <th className="font-family-poppins text-xs text-gray font-medium pb-3">Actions</th>
                     )}
                   </tr>
@@ -151,13 +190,23 @@ function AdminReports() {
                       {status === "pending" && (
                         <td className="py-3">
                           <div className="flex gap-2">
-                            <button
-                              onClick={() => handleReview(r.id, "block")}
-                              disabled={actingReportId === r.id || r.reportedUser?.isSuspended}
-                              className="font-family-poppins text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-all"
-                            >
-                              {r.reportedUser?.isSuspended ? "Blocked" : "Block User"}
-                            </button>
+                            {r.reportedUser?.isSuspended ? (
+                              <button
+                                onClick={() => handleUnblock(r.reportedUser.id)}
+                                disabled={togglingUserId === r.reportedUser.id}
+                                className="font-family-poppins text-xs font-semibold text-black bg-light-gray hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-all"
+                              >
+                                Unblock
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleReview(r.id, "block")}
+                                disabled={actingReportId === r.id}
+                                className="font-family-poppins text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-all"
+                              >
+                                Block User
+                              </button>
+                            )}
                             <button
                               onClick={() => handleReview(r.id, "dismiss")}
                               disabled={actingReportId === r.id}
@@ -166,6 +215,21 @@ function AdminReports() {
                               Dismiss
                             </button>
                           </div>
+                        </td>
+                      )}
+                      {status === "reviewed" && (
+                        <td className="py-3">
+                          {r.reportedUser?.isSuspended ? (
+                            <button
+                              onClick={() => handleUnblock(r.reportedUser.id)}
+                              disabled={togglingUserId === r.reportedUser.id}
+                              className="font-family-poppins text-xs font-semibold text-black bg-light-gray hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-all"
+                            >
+                              Unblock
+                            </button>
+                          ) : (
+                            <span className="font-family-poppins text-xs text-gray">-</span>
+                          )}
                         </td>
                       )}
                     </tr>
@@ -180,6 +244,17 @@ function AdminReports() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(confirmTarget)}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={handleConfirmBlock}
+        title="Block User"
+        message="Block this user? They'll be logged out and unable to sign back in or message anyone."
+        confirmLabel="Block User"
+        confirmingLabel="Blocking..."
+        isConfirming={actingReportId === confirmTarget?.reportId}
+      />
     </div>
   );
 }

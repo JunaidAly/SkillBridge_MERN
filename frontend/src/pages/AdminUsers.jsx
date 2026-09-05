@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import apiClient from "../api/client";
 import Pagination from "../ui/Pagination";
 import { useToast } from "../ui/Toast";
+import ConfirmModal from "../components/Modal/ConfirmModal";
 
 const ROLE_OPTIONS = ["user", "admin"];
 
@@ -22,6 +23,7 @@ function AdminUsers() {
   const [error, setError] = useState(null);
   const [savingUserId, setSavingUserId] = useState(null);
   const [togglingUserId, setTogglingUserId] = useState(null);
+  const [confirmUserId, setConfirmUserId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,17 +72,35 @@ function AdminUsers() {
   };
 
   const handleToggleSuspend = async (userId, isSuspended) => {
-    if (!isSuspended && !window.confirm("Block this user? They'll be logged out and unable to sign back in or message anyone.")) {
+    if (!isSuspended) {
+      setConfirmUserId(userId);
       return;
     }
     setTogglingUserId(userId);
     try {
-      const action = isSuspended ? "unsuspend" : "suspend";
-      const res = await apiClient.patch(`/admin/users/${userId}/${action}`);
+      const res = await apiClient.patch(`/admin/users/${userId}/unsuspend`);
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, isSuspended: res.data.user.isSuspended } : u))
       );
-      success(isSuspended ? "User unblocked." : "User blocked.");
+      success("User unblocked.");
+    } catch (err) {
+      showError(err.response?.data?.message || "Unable to update user.");
+    } finally {
+      setTogglingUserId(null);
+    }
+  };
+
+  const handleConfirmBlock = async () => {
+    const userId = confirmUserId;
+    if (!userId) return;
+    setTogglingUserId(userId);
+    try {
+      const res = await apiClient.patch(`/admin/users/${userId}/suspend`);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isSuspended: res.data.user.isSuspended } : u))
+      );
+      success("User blocked.");
+      setConfirmUserId(null);
     } catch (err) {
       showError(err.response?.data?.message || "Unable to update user.");
     } finally {
@@ -204,6 +224,17 @@ function AdminUsers() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(confirmUserId)}
+        onClose={() => setConfirmUserId(null)}
+        onConfirm={handleConfirmBlock}
+        title="Block User"
+        message="Block this user? They'll be logged out and unable to sign back in or message anyone."
+        confirmLabel="Block User"
+        confirmingLabel="Blocking..."
+        isConfirming={togglingUserId === confirmUserId}
+      />
     </div>
   );
 }
