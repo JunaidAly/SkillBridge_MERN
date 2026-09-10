@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DollarSign, Receipt, CheckCircle2 } from "lucide-react";
+import { Banknote, Receipt, CheckCircle2 } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -130,7 +130,7 @@ function AdminTransactions() {
     {
       title: "Total Revenue",
       value: stats ? formatCurrency(stats.totalRevenue, stats.currency) : "-",
-      icon: DollarSign,
+      icon: Banknote,
       iconBg: "bg-teal/10",
       iconColor: "text-teal",
     },
