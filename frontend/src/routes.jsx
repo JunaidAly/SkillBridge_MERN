@@ -3,6 +3,7 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignUpPage from "./pages/SignUpPage";
 import TwoFactorPage from "./pages/TwoFactorPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import DashboardLayout from "./layouts/DashboardLayout";
 import DashboardPage from "./pages/DashboardPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -11,6 +12,8 @@ import ChatPage from "./pages/ChatPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import CreditsPage from "./pages/CreditsPage";
 import PurchaseHistory from "./pages/PurchaseHistory";
+import CreditsSuccess from "./pages/CreditsSuccess";
+import CreditsCancelled from "./pages/CreditsCancelled";
 import SessionHistory from "./pages/SessionHistory";
 import AdminTransactions from "./pages/AdminTransactions";
 import AdminUsers from "./pages/AdminUsers";
@@ -42,6 +45,14 @@ const router = createBrowserRouter([
     element: (
       <PublicRoute>
         <LoginPage />
+      </PublicRoute>
+    ),
+  },
+  {
+    path: "/forgot-password",
+    element: (
+      <PublicRoute>
+        <ForgotPasswordPage />
       </PublicRoute>
     ),
   },
@@ -103,6 +114,14 @@ const router = createBrowserRouter([
       {
         path: "/credits/history",
         element: <PurchaseHistory />,
+      },
+      {
+        path: "/credits/success",
+        element: <CreditsSuccess />,
+      },
+      {
+        path: "/credits/cancelled",
+        element: <CreditsCancelled />,
       },
       {
         path: "/meetings/history",

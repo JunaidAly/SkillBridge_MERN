@@ -67,10 +67,6 @@ app.use(cors({
   ],
   credentials: true
 }));
-// Paddle webhook needs the raw body for signature verification - must be mounted
-// before the global express.json() parser, scoped only to this route.
-app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

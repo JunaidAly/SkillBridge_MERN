@@ -47,8 +47,12 @@ const formatDate = (dateString) =>
     hour12: true,
   });
 
-const formatCurrency = (amount, currency) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(amount || 0);
+const formatCurrency = (amount, currency) => {
+  if ((currency || "PKR") === "PKR") {
+    return `Rs. ${(amount || 0).toLocaleString("en-US")}`;
+  }
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount || 0);
+};
 
 function AdminTransactions() {
   const [transactions, setTransactions] = useState([]);
@@ -220,7 +224,7 @@ function AdminTransactions() {
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(v) => `$${v}`}
+                  tickFormatter={(v) => `Rs. ${v}`}
                   tick={{ fontSize: 12, fill: "#575757" }}
                   axisLine={false}
                   tickLine={false}

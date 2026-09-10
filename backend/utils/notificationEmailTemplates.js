@@ -49,14 +49,14 @@ export function refundApprovedEmail({ name, amountPaid, currency, creditsGranted
   const subject = 'Your refund has been approved';
   const html = wrap(TEAL, 'Refund Approved', `
     <h2 style="color: #333; margin-top: 0;">Hi ${name}!</h2>
-    <p style="color: #666; font-size: 16px;">Your refund request has been approved and processed through Paddle.</p>
+    <p style="color: #666; font-size: 16px;">Your refund request has been approved. Our team will process the payment refund manually within a few business days.</p>
     <div style="background: white; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #14b8a6;">
-      <p style="color: #666; margin: 8px 0;"><strong>Amount refunded:</strong> ${amountPaid} ${currency}</p>
+      <p style="color: #666; margin: 8px 0;"><strong>Amount to be refunded:</strong> ${amountPaid} ${currency}</p>
       <p style="color: #666; margin: 8px 0;"><strong>Credits deducted:</strong> ${creditsGranted}</p>
     </div>
     <p style="color: #666; font-size: 14px;">The refund will appear on your original payment method - timing depends on your bank or card issuer.</p>
   `);
-  const text = `Hi ${name}!\n\nYour refund request has been approved and processed through Paddle.\n\nAmount refunded: ${amountPaid} ${currency}\nCredits deducted: ${creditsGranted}\n\nThe refund will appear on your original payment method - timing depends on your bank or card issuer.`;
+  const text = `Hi ${name}!\n\nYour refund request has been approved. Our team will process the payment refund manually within a few business days.\n\nAmount to be refunded: ${amountPaid} ${currency}\nCredits deducted: ${creditsGranted}\n\nThe refund will appear on your original payment method - timing depends on your bank or card issuer.`;
   return { subject, html, text };
 }
 

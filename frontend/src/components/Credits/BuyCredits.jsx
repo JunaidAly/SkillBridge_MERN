@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { CheckoutEventNames } from "@paddle/paddle-js";
 import apiClient from "../../api/client";
-import { getPaddleInstance, onPaddleEvent } from "../../lib/paddle";
-import { fetchWallet } from "../../store/creditsSlice";
 import { useToast } from "../../ui/Toast";
 
+// Outside the component so the mutation isn't lexically inside render/hook
+// scope - Safepay's checkout is a hosted redirect page, not an in-page
+// overlay, so this sends the whole browser there.
+function redirectTo(url) {
+  window.location.href = url;
+}
+
 function BuyCredits() {
-  const dispatch = useDispatch();
-  const { success, error: showError } = useToast();
-  const userId = useSelector((state) => state.auth.user?.id);
+  const { error: showError } = useToast();
 
   const [packages, setPackages] = useState([]);
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [packagesError, setPackagesError] = useState(null);
-  const [buyingPriceId, setBuyingPriceId] = useState(null);
+  const [buyingPackId, setBuyingPackId] = useState(null);
 
   const fetchPackages = () => {
     apiClient
@@ -41,37 +42,14 @@ function BuyCredits() {
     fetchPackages();
   };
 
-  useEffect(() => {
-    const unsubscribe = onPaddleEvent((event) => {
-      if (event.name === CheckoutEventNames.CHECKOUT_COMPLETED) {
-        setBuyingPriceId(null);
-        success("Purchase successful! Your credits have been added.");
-        dispatch(fetchWallet());
-      } else if (event.name === CheckoutEventNames.CHECKOUT_CLOSED) {
-        setBuyingPriceId(null);
-      } else if (
-        event.name === CheckoutEventNames.CHECKOUT_ERROR ||
-        event.name === CheckoutEventNames.CHECKOUT_PAYMENT_FAILED
-      ) {
-        setBuyingPriceId(null);
-        showError("Payment could not be completed. Please try again.");
-      }
-    });
-    return unsubscribe;
-  }, [dispatch, success, showError]);
-
-  const handleBuy = async (priceId) => {
-    if (buyingPriceId) return;
-    setBuyingPriceId(priceId);
+  const handleBuy = async (packId) => {
+    if (buyingPackId) return;
+    setBuyingPackId(packId);
     try {
-      await apiClient.post("/payments/checkout", { priceId });
-      const paddle = await getPaddleInstance();
-      paddle.Checkout.open({
-        items: [{ priceId, quantity: 1 }],
-        customData: { userId },
-      });
+      const res = await apiClient.post("/payments/checkout", { packId });
+      redirectTo(res.data.checkoutUrl);
     } catch (err) {
-      setBuyingPriceId(null);
+      setBuyingPackId(null);
       showError(err.response?.data?.message || "Unable to start checkout. Please try again.");
     }
   };
@@ -103,10 +81,10 @@ function BuyCredits() {
       {!packagesLoading && !packagesError && (
         <div className="space-y-3">
           {packages.map((pkg) => {
-            const isBuying = buyingPriceId === pkg.priceId;
+            const isBuying = buyingPackId === pkg.packId;
             return (
               <div
-                key={pkg.priceId}
+                key={pkg.packId}
                 className="relative flex items-center justify-between p-4 rounded-xl border border-[#E5E5E5]"
               >
                 <div>
@@ -120,8 +98,8 @@ function BuyCredits() {
                     {pkg.displayPrice}
                   </p>
                   <button
-                    onClick={() => handleBuy(pkg.priceId)}
-                    disabled={!!buyingPriceId}
+                    onClick={() => handleBuy(pkg.packId)}
+                    disabled={!!buyingPackId}
                     className="font-family-poppins text-sm font-semibold text-white bg-teal px-4 py-2 rounded-lg disabled:opacity-60 disabled:cursor-not-allowed min-w-[72px]"
                   >
                     {isBuying ? (

@@ -73,6 +73,63 @@ export async function sendVerificationCode(email, code) {
   }
 }
 
+export async function sendPasswordResetCode(email, code) {
+  console.log('='.repeat(50));
+  console.log(`🔑 Password Reset Code for ${email}: ${code}`);
+  console.log('='.repeat(50));
+
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    console.log('⚠️  SMTP not configured. Add SMTP_HOST, SMTP_USER, and SMTP_PASS to .env to send emails.');
+    return true;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+      auth: { user: smtpUser, pass: smtpPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    });
+
+    const info = await transporter.sendMail({
+      from: `"SkillBridge" <${smtpFrom}>`,
+      to: email,
+      subject: 'Reset your SkillBridge password',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">SkillBridge</h1>
+          </div>
+          <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+            <h2 style="color: #333; margin-top: 0;">Reset Your Password</h2>
+            <p style="color: #666; font-size: 16px;">Use the following code to reset your password:</p>
+            <div style="background: white; border: 2px dashed #667eea; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+              <p style="font-size: 32px; font-weight: bold; color: #667eea; letter-spacing: 5px; margin: 0;">${code}</p>
+            </div>
+            <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes.</p>
+            <p style="color: #999; font-size: 12px; margin-top: 30px;">If you didn't request a password reset, you can safely ignore this email - your password won't be changed.</p>
+          </div>
+        </div>
+      `,
+      text: `Use the following code to reset your SkillBridge password: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
+    });
+
+    console.log('✅ Password reset email sent successfully:', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending password reset email:', error.message);
+    return true; // Never block the caller's primary action over an email failure
+  }
+}
+
 export async function sendMeetingInviteEmail(email, recipientName, meetingDetails) {
   const { title, startsAt, duration, skill, joinUrl, organizerName } = meetingDetails;
 

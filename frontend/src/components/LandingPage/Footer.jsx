@@ -22,6 +22,12 @@ function Footer() {
               AI-powered skill exchange platform connecting learners and mentors
               worldwide.
             </p>
+            <a
+              href="mailto:support@skill-bridge.me"
+              className="inline-block mt-3 text-black text-sm hover:text-teal transition-colors"
+            >
+              support@skill-bridge.me
+            </a>
           </div>
 
           {/* Company */}

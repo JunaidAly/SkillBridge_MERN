@@ -20,7 +20,7 @@ const verificationCodeSchema = new mongoose.Schema(
     },
     purpose: {
       type: String,
-      enum: ['signup', 'login'],
+      enum: ['signup', 'login', 'password_reset'],
       required: true,
     },
     expiresAt: {

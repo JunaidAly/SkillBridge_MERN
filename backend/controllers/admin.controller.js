@@ -19,7 +19,6 @@ import {
   payoutRejectedEmail,
   payoutPaidEmail,
 } from '../utils/notificationEmailTemplates.js';
-import paddle from '../config/paddle.js';
 
 const MAX_PAGE_LIMIT = 50;
 const DEFAULT_PAGE_LIMIT = 10;
@@ -48,7 +47,7 @@ export const getAllTransactions = async (req, res) => {
         {
           $group: {
             _id: null,
-            // TODO: handle multi-currency - this assumes a single currency (USD) platform-wide.
+            // This assumes a single currency (PKR, via Safepay) platform-wide.
             totalRevenue: {
               $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$amountPaid', 0] },
             },
@@ -77,7 +76,7 @@ export const getAllTransactions = async (req, res) => {
         totalTransactions: stats.totalTransactions,
         completedCount: stats.completedCount,
         failedCount: stats.failedCount,
-        currency: 'USD',
+        currency: 'PKR',
       },
       transactions: transactions.map((t) => ({
         id: t._id.toString(),
@@ -581,7 +580,7 @@ export const getRefundRequests = async (req, res) => {
     const [requests, totalCount] = await Promise.all([
       RefundRequest.find(filter)
         .populate('user', 'name email')
-        .populate('transaction', 'amountPaid currency creditsGranted status createdAt paddleTransactionId')
+        .populate('transaction', 'amountPaid currency creditsGranted status createdAt providerTransactionId')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -670,52 +669,24 @@ export const reviewRefundRequest = async (req, res) => {
       });
     }
 
-    // decision === 'approved' - a REAL Paddle refund must succeed before any DB record
-    // is marked approved. Never flip our own status optimistically ahead of Paddle.
+    // decision === 'approved' - Safepay's SDK has no refund/adjustment API, so
+    // there is no gateway call to make here. This
+    // records the approval and reverses the credits; the actual money refund
+    // has to be issued manually by the team through the Safepay merchant
+    // dashboard. The user is told this explicitly (see refundApprovedEmail).
     const transaction = refundRequest.transaction;
-    if (!transaction || !transaction.paddleTransactionId) {
-      return res.status(400).json({ message: 'This refund request is not linked to a valid Paddle transaction.' });
+    if (!transaction) {
+      return res.status(400).json({ message: 'This refund request is not linked to a valid transaction.' });
     }
 
-    let adjustment;
-    try {
-      adjustment = await paddle.adjustments.create({
-        action: 'refund',
-        reason: refundRequest.reason,
-        transactionId: transaction.paddleTransactionId,
-        type: 'full',
-      });
-    } catch (paddleError) {
-      console.error('Paddle refund failed:', paddleError.message);
-      return res.status(502).json({
-        message: `Paddle refund failed: ${paddleError.message}. The refund was NOT approved - nothing was changed.`,
-      });
-    }
-
-    // Paddle has now actually refunded the money - this is the point of no return.
-    // Mark the request approved IMMEDIATELY, before any other write, so that if something
-    // below fails and the admin retries, the pending-status guard above stops us from ever
-    // calling Paddle's refund a second time for the same request.
     refundRequest.status = 'approved';
     refundRequest.adminNote = adminNote?.trim() || undefined;
     refundRequest.resolvedAt = new Date();
-    try {
-      await refundRequest.save();
-    } catch (saveError) {
-      console.error(
-        `CRITICAL: Paddle refund ${adjustment.id} succeeded for RefundRequest ${refundRequest._id} but saving the approved status failed:`,
-        saveError
-      );
-      return res.status(500).json({
-        message: `Paddle refund succeeded (adjustment ${adjustment.id}), but recording the approval failed: ${saveError.message}. Money has already moved - do NOT retry this approval. Manually set RefundRequest ${refundRequest._id} to 'approved' and reconcile the wallet.`,
-      });
-    }
+    await refundRequest.save();
 
-    // Wallet balance, the credit ledger entry, and flipping the transaction to 'refunded' must
-    // all move together - wrap them in a real Mongo transaction so a mid-way failure can't leave
-    // one applied and the other not. The refund itself is already approved and done regardless
-    // of whether this group succeeds; a failure here just needs manual reconciliation, not a
-    // second Paddle call.
+    // Wallet balance, the credit ledger entry, and flipping the transaction to
+    // 'refunded' move together - wrap them in a real Mongo transaction so a
+    // mid-way failure can't leave one applied and the other not.
     const creditsToDeduct = transaction.creditsGranted || 0;
     let creditNote = null;
     let followUpError = null;
@@ -754,7 +725,7 @@ export const reviewRefundRequest = async (req, res) => {
     } catch (txError) {
       followUpError = txError;
       console.error(
-        `CRITICAL: Paddle refund ${adjustment.id} and RefundRequest ${refundRequest._id} approval both succeeded, but the wallet/transaction update failed and was rolled back:`,
+        `CRITICAL: RefundRequest ${refundRequest._id} approval succeeded, but the wallet/transaction update failed and was rolled back:`,
         txError
       );
     } finally {
@@ -773,10 +744,9 @@ export const reviewRefundRequest = async (req, res) => {
       details: {
         refundRequestId: refundRequest._id.toString(),
         transactionId: transaction._id.toString(),
-        paddleAdjustmentId: adjustment.id,
-        paddleAdjustmentStatus: adjustment.status,
         creditsDeducted: creditsToDeduct,
         walletSyncFailed: !!followUpError,
+        manualPaymentRefundRequired: true,
       },
     });
 
@@ -784,7 +754,7 @@ export const reviewRefundRequest = async (req, res) => {
       userId: refundRequest.user._id,
       type: 'refund_approved',
       title: 'Your refund was approved',
-      body: `Your refund for transaction ${transaction._id} has been processed via Paddle.`,
+      body: `Your refund for transaction ${transaction._id} has been approved. Our team will process the payment refund manually within a few business days.`,
       link: '/credits/history',
       sendEmail: true,
       emailContent: refundApprovedEmail({
@@ -803,8 +773,7 @@ export const reviewRefundRequest = async (req, res) => {
           adminNote: refundRequest.adminNote,
           resolvedAt: refundRequest.resolvedAt,
         },
-        paddleAdjustment: { id: adjustment.id, status: adjustment.status },
-        warning: `Paddle refund succeeded and is recorded as approved, but updating the wallet/transaction failed (${followUpError.message}). Please reconcile transaction ${transaction._id} and the user's wallet manually - do not re-approve.`,
+        warning: `Refund approved, but updating the wallet/transaction failed (${followUpError.message}). Please reconcile transaction ${transaction._id} and the user's wallet manually.`,
       });
     }
 
@@ -815,7 +784,6 @@ export const reviewRefundRequest = async (req, res) => {
         adminNote: refundRequest.adminNote,
         resolvedAt: refundRequest.resolvedAt,
       },
-      paddleAdjustment: { id: adjustment.id, status: adjustment.status },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

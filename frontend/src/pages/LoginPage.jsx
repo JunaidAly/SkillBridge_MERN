@@ -205,9 +205,9 @@ function LoginPage() {
             />
 
             <div className="flex items-center justify-end text-sm">
-              <a href="#" className="font-family-poppins text-teal hover:underline">
+              <Link to="/forgot-password" className="font-family-poppins text-teal hover:underline">
                 Forgot password?
-              </a>
+              </Link>
             </div>
             <Button
               variant="primary"

@@ -2,7 +2,7 @@ import express from 'express';
 import User from '../models/User.js';
 import VerificationCode from '../models/VerificationCode.js';
 import jwt from 'jsonwebtoken';
-import { sendVerificationCode } from '../utils/emailService.js';
+import { sendVerificationCode, sendPasswordResetCode } from '../utils/emailService.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -315,6 +315,92 @@ router.post('/resend-code', async (req, res) => {
       success: true,
       message: 'Verification code resent to your email',
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Request a password reset code. Always responds with the same success
+// message regardless of whether the email exists, so this can't be used to
+// enumerate registered accounts - the code is only actually sent if it does.
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email?.trim()) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (user) {
+      // Invalidate any earlier still-active reset codes for this email first.
+      await VerificationCode.updateMany(
+        { email: normalizedEmail, purpose: 'password_reset', verified: false },
+        { verified: true }
+      );
+
+      const code = generateCode();
+      await VerificationCode.create({
+        email: normalizedEmail,
+        code,
+        userId: user._id,
+        purpose: 'password_reset',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      });
+
+      sendPasswordResetCode(normalizedEmail, code).catch((err) =>
+        console.error('❌ Error sending password reset email:', err.message)
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'If an account exists for that email, a password reset code has been sent.',
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Verify the reset code and set a new password in one step.
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ message: 'Email, code, and newPassword are required' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const verification = await VerificationCode.findOne({
+      email: normalizedEmail,
+      code: code.trim(),
+      purpose: 'password_reset',
+      verified: false,
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+
+    if (!verification) {
+      return res.status(400).json({ message: 'Invalid or expired reset code' });
+    }
+
+    const user = await User.findById(verification.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    verification.verified = true;
+    await verification.save();
+
+    user.password = newPassword; // pre-save hook rehashes since this field changed
+    await user.save();
+
+    res.json({ success: true, message: 'Password reset successfully. You can now log in.' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

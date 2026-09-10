@@ -33,7 +33,7 @@ const creditTransactionSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ['paddle', 'admin', 'system'],
+      enum: ['safepay', 'admin', 'system'],
       default: 'system',
     },
     transactionRef: {

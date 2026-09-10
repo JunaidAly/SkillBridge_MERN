@@ -15,8 +15,13 @@ const formatDate = (dateString) =>
     hour12: true,
   });
 
-const formatAmount = (amount, currency) =>
-  amount == null ? "-" : new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(amount);
+const formatAmount = (amount, currency) => {
+  if (amount == null) return "-";
+  if ((currency || "PKR") === "PKR") {
+    return `Rs. ${amount.toLocaleString("en-US")}`;
+  }
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+};
 
 function PurchaseHistory() {
   const { success, error: showError } = useToast();

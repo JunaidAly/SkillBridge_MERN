@@ -14,8 +14,12 @@ const formatDate = (dateString) =>
     hour12: true,
   });
 
-const formatCurrency = (amount, currency) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(amount || 0);
+const formatCurrency = (amount, currency) => {
+  if ((currency || "PKR") === "PKR") {
+    return `Rs. ${(amount || 0).toLocaleString("en-US")}`;
+  }
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount || 0);
+};
 
 function AdminRefunds() {
   const { success, error: showError } = useToast();
@@ -62,11 +66,11 @@ function AdminRefunds() {
     try {
       const res = await apiClient.patch(`/admin/refund-requests/${id}`, { decision: "approved" });
       if (res.data.warning) {
-        // Paddle refund succeeded, but a follow-up DB update failed - this needs the
-        // admin's attention even though the request is no longer "pending".
+        // Approval succeeded, but a follow-up DB update failed - this needs
+        // the admin's attention even though the request is no longer "pending".
         showError(res.data.warning, 15000);
       } else {
-        success("Refund approved and processed through Paddle.");
+        success("Refund approved. Remember to process the payment refund manually via the Safepay dashboard.");
       }
       removeFromList(id);
     } catch (err) {
@@ -102,7 +106,7 @@ function AdminRefunds() {
           Refund Requests
         </h1>
         <p className="font-family-poppins text-sm text-gray">
-          Review pending refund requests. Approving processes a real refund through Paddle.
+          Review pending refund requests. Approving reverses the user's credits - the payment refund itself must be issued manually via the Safepay dashboard.
         </p>
       </div>
 
