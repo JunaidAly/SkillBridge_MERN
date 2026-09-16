@@ -5,8 +5,6 @@ import Pagination from "../ui/Pagination";
 import { useToast } from "../ui/Toast";
 import ConfirmModal from "../components/Modal/ConfirmModal";
 
-const ROLE_OPTIONS = ["user", "admin"];
-
 const formatDate = (dateString) =>
   new Date(dateString).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
@@ -21,7 +19,6 @@ function AdminUsers() {
   const [searchInput, setSearchInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [savingUserId, setSavingUserId] = useState(null);
   const [togglingUserId, setTogglingUserId] = useState(null);
   const [confirmUserId, setConfirmUserId] = useState(null);
 
@@ -55,20 +52,6 @@ function AdminUsers() {
     e.preventDefault();
     setPage(1);
     setSearch(searchInput.trim());
-  };
-
-  const handleRoleChange = async (userId, newRole, currentRole) => {
-    if (newRole === currentRole) return;
-    setSavingUserId(userId);
-    try {
-      const res = await apiClient.patch(`/admin/users/${userId}/role`, { role: newRole });
-      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: res.data.user.role } : u)));
-      success(`Role updated to ${res.data.user.role}.`);
-    } catch (err) {
-      showError(err.response?.data?.message || "Unable to update role.");
-    } finally {
-      setSavingUserId(null);
-    }
   };
 
   const handleToggleSuspend = async (userId, isSuspended) => {
@@ -115,7 +98,7 @@ function AdminUsers() {
           User Management
         </h1>
         <p className="font-family-poppins text-sm text-gray">
-          Search users and manage their roles
+          Search users and manage their status
         </p>
       </div>
 
@@ -160,7 +143,6 @@ function AdminUsers() {
                   <tr className="border-b border-[#E5E5E5]">
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">User</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Joined</th>
-                    <th className="font-family-poppins text-xs text-gray font-medium pb-3">Role</th>
                     <th className="font-family-poppins text-xs text-gray font-medium pb-3">Status</th>
                   </tr>
                 </thead>
@@ -177,21 +159,6 @@ function AdminUsers() {
                         </td>
                         <td className="font-family-poppins text-sm text-black py-3">
                           {formatDate(u.createdAt)}
-                        </td>
-                        <td className="py-3">
-                          <select
-                            value={u.role}
-                            disabled={savingUserId === u.id || (isSelf && u.role === "admin")}
-                            onChange={(e) => handleRoleChange(u.id, e.target.value, u.role)}
-                            title={isSelf && u.role === "admin" ? "You cannot change your own admin role" : undefined}
-                            className="font-family-poppins text-sm border border-[#D0D0D0] rounded-lg px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:border-teal"
-                          >
-                            {ROLE_OPTIONS.map((role) => (
-                              <option key={role} value={role}>
-                                {role}
-                              </option>
-                            ))}
-                          </select>
                         </td>
                         <td className="py-3">
                           {u.role === "admin" ? (

@@ -13,9 +13,11 @@ function RefundPolicyPage() {
       <h2>2. Refund Review</h2>
       <p>
         Refund requests are reviewed by our team. We consider factors including whether the
-        credits have already been spent on a session. Approved refunds are processed back to your
-        original payment method through Safepay; processing times depend on Safepay and your
-        bank/card issuer.
+        credits have already been spent on a session. Approved refunds are processed manually by
+        our team through Safepay's dashboard.
+      </p>
+      <p>
+        Refund processing typically takes 3-5 business days from the date of approval.
       </p>
 
       <h2>3. Partial Usage</h2>

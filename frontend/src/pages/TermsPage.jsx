@@ -6,9 +6,10 @@ function TermsPage() {
       <h2>1. About SkillBridge</h2>
       <p>
         SkillBridge ("we," "us," "the platform") is operated by Junaid Ali, a sole proprietor
-        registered with the Federal Board of Revenue, Pakistan (NTN: 7150403888793). SkillBridge
-        is a peer-to-peer skill-exchange platform connecting students and teachers for tutoring
-        sessions.
+        registered with the Federal Board of Revenue, Pakistan (NTN: 7150403888793), with a
+        registered business address of po karimabad Altit faizabad tensil Aliabad District Hunza,
+        Hunza Nagar, Hunza, Pakistan. SkillBridge is a peer-to-peer skill-exchange platform
+        connecting students and teachers for tutoring sessions.
       </p>
 
       <h2>2. Eligibility</h2>
@@ -72,13 +73,20 @@ function TermsPage() {
         independent users; we do not employ teachers.
       </p>
 
-      <h2>10. Changes to These Terms</h2>
+      <h2>10. Governing Law</h2>
+      <p>
+        Our Terms and Conditions are governed by the laws of the Islamic Republic of Pakistan and
+        you agree that the courts of Islamabad (including any consumer court) will have exclusive
+        jurisdiction in any dispute that you have with us.
+      </p>
+
+      <h2>11. Changes to These Terms</h2>
       <p>
         We may update these terms from time to time. Continued use of the platform after changes
         constitutes acceptance.
       </p>
 
-      <h2>11. Contact</h2>
+      <h2>12. Contact</h2>
       <p>
         For questions about these terms, contact us at{' '}
         <a href="mailto:support@skill-bridge.me">support@skill-bridge.me</a>.
