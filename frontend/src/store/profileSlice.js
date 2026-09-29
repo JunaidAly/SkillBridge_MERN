@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import apiClient from '../api/client';
-import { logout } from './authSlice';
+import { logout, updateUserProfile } from './authSlice';
 
 const initialState = {
   profile: null,
@@ -65,6 +65,25 @@ export const deleteAvatar = createAsyncThunk(
       return null;
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to delete avatar';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+// Mark the post-signup wizard as done (completed or skipped - same call).
+// Deliberately saves nothing else: the wizard's actual data goes through the
+// same skill/profile thunks below that Edit Profile uses.
+export const completeOnboarding = createAsyncThunk(
+  'profile/completeOnboarding',
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      const res = await apiClient.patch('/users/me/onboarding');
+      // Keep the cached auth user in step - that's what OnboardingGate reads on
+      // the next page load, before the profile fetch has come back.
+      dispatch(updateUserProfile({ onboardingCompleted: true }));
+      return res.data.onboardingCompleted;
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to save onboarding status';
       return rejectWithValue(message);
     }
   }
@@ -283,6 +302,12 @@ const profileSlice = createSlice({
       .addCase(deleteAvatar.fulfilled, (state) => {
         if (state.profile) {
           state.profile.avatar = '';
+        }
+      })
+      // Complete/skip onboarding
+      .addCase(completeOnboarding.fulfilled, (state, action) => {
+        if (state.profile) {
+          state.profile.onboardingCompleted = action.payload;
         }
       })
       // Add teaching skill

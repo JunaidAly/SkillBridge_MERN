@@ -38,8 +38,32 @@ router.get('/me', authenticateToken, async (req, res) => {
         blockedUsers: user.blockedUsers,
         freeTrialSessionUsed: user.freeTrialSessionUsed,
         acceptsFreeTrialSessions: user.acceptsFreeTrialSessions,
+        onboardingCompleted: user.onboardingCompleted,
       },
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Marks the post-signup wizard as done. Called both when the wizard is
+// completed and when it's skipped - skipping saves nothing else, so anything
+// the user passed over stays genuinely empty rather than getting a default.
+// The data the wizard does collect goes through the existing skills/profile
+// endpoints below, not through here.
+router.patch('/me/onboarding', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user.userId,
+      { onboardingCompleted: true },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ success: true, onboardingCompleted: user.onboardingCompleted });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -87,6 +111,10 @@ router.put('/me', authenticateToken, async (req, res) => {
         stats: user.stats,
         freeTrialSessionUsed: user.freeTrialSessionUsed,
         acceptsFreeTrialSessions: user.acceptsFreeTrialSessions,
+        // Must be present: the client replaces its whole cached profile with
+        // this payload, and a missing flag reads as "onboarding not pending",
+        // which would tear the wizard down mid-flow.
+        onboardingCompleted: user.onboardingCompleted,
       },
     });
   } catch (error) {

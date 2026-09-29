@@ -205,6 +205,13 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Set once the post-signup wizard is finished OR skipped - either way the
+    // wizard never reappears. Accounts that predate the wizard were backfilled
+    // to true (scripts/backfillOnboarding.js) so it only ever greets new signups.
+    onboardingCompleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

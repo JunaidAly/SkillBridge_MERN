@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
+import OnboardingGate from "../components/Onboarding/OnboardingGate";
 
 function DashboardLayout() {
   return (
@@ -12,6 +13,7 @@ function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+      <OnboardingGate />
     </div>
   );
 }

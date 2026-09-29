@@ -5,6 +5,7 @@ import { fetchWallet } from "../store/creditsSlice";
 import { fetchMeetings } from "../store/meetingsSlice";
 import { fetchProfile } from "../store/profileSlice";
 import AIRecommendations from "../components/Dashboard/AIRecommendations";
+import ProfileCompletionBanner from "../components/Dashboard/ProfileCompletionBanner";
 
 function DashboardPage() {
   const dispatch = useDispatch();
@@ -56,6 +57,8 @@ function DashboardPage() {
           Here's an overview of your SkillBridge activity.
         </p>
       </div>
+
+      <ProfileCompletionBanner />
 
       {/* Quick Stats */}
       <div className="mb-8">

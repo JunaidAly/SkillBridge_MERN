@@ -156,6 +156,7 @@ router.post('/google', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        onboardingCompleted: user.onboardingCompleted,
       },
     });
   } catch (error) {
@@ -214,6 +215,7 @@ router.post('/facebook', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        onboardingCompleted: user.onboardingCompleted,
       },
     });
   } catch (error) {
@@ -271,6 +273,7 @@ router.post('/verify', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        onboardingCompleted: user.onboardingCompleted,
       },
     });
   } catch (error) {
@@ -421,6 +424,7 @@ router.get('/me', authenticateToken, async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        onboardingCompleted: user.onboardingCompleted,
         skills: user.skills,
         interests: user.interests,
         bio: user.bio,
