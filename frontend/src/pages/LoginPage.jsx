@@ -140,23 +140,14 @@ function LoginPage() {
       window.FB.login(
         (response) => {
           if (response.authResponse) {
-            window.FB.api(
-              '/me',
-              { fields: 'name,email' },
-              (userInfo) => {
-                if (userInfo.error) {
-                  console.error('Facebook API error:', userInfo.error);
-                  showError('Failed to get user information from Facebook.');
-                  return;
-                }
-                dispatch(loginWithFacebook({
-                  accessToken: response.authResponse.accessToken,
-                  userID: response.authResponse.userID,
-                  email: userInfo.email || `${response.authResponse.userID}@facebook.com`,
-                  name: userInfo.name,
-                }));
-              }
-            );
+            // Hand the server the access token and nothing else - it calls
+            // Facebook itself for the identity. Reading name/email here and
+            // forwarding them made them unverified client claims, and the
+            // old `<userID>@facebook.com` fallback invented an address
+            // outright for accounts that share no email.
+            dispatch(loginWithFacebook({
+              accessToken: response.authResponse.accessToken,
+            }));
           } else {
             console.error('Facebook login failed:', response);
             if (response.error) {

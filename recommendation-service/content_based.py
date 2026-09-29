@@ -1,73 +1,77 @@
 """
 Content-Based Filtering using TF-IDF and Cosine Similarity
+
+Matching runs in BOTH directions off a single implementation:
+
+  direction "learn"  query = my skillsLearning   corpus = teachers' skillsTeaching
+                     -> "teachers I can learn from"
+  direction "teach"  query = my skillsTeaching   corpus = students' skillsLearning
+                     -> "students who want to learn what I teach"
+
+There is deliberately only one vectorise/similarity/normalise code path
+(_fit_corpus and _query_corpus). A direction is just a different corpus plus a
+different query-text builder - the two text builders below are each used as a
+corpus builder in one direction and as the query builder in the other.
 """
 import logging
 from typing import List, Dict, Optional, Tuple
-import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import joblib
-import os
-from config import settings
 from model_storage import model_storage
 
 logger = logging.getLogger(__name__)
 
+# Direction -> which corpus it searches.
+LEARN = 'learn'   # searches the teacher corpus
+TEACH = 'teach'   # searches the student corpus
+DIRECTIONS = (LEARN, TEACH)
+
+EMPTY_TEACHING_TEXT = "general teaching"
+EMPTY_LEARNING_TEXT = "general learning"
+
 
 class ContentBasedEngine:
     """
-    Content-based recommendation engine using TF-IDF and cosine similarity
+    Content-based recommendation engine using TF-IDF and cosine similarity.
     """
-    
+
     def __init__(self):
-        self.vectorizer: Optional[TfidfVectorizer] = None
-        self.teacher_features_matrix = None
-        self.teacher_data: Dict[str, Dict] = {}
-        self.teacher_ids: List[str] = []
-        self.is_trained = False
-        self.vectorizer_path = os.path.join(settings.models_storage_path, "tfidf_vectorizer.joblib")
-        self.features_path = os.path.join(settings.models_storage_path, "teacher_features.joblib")
-        self.metadata_path = os.path.join(settings.models_storage_path, "content_metadata.joblib")
-    
-    def prepare_teacher_text(self, teacher: Dict) -> str:
+        # One corpus per direction. Same structure, same code builds both.
+        self.corpora: Dict[str, Optional[Dict]] = {LEARN: None, TEACH: None}
+
+    # ------------------------------------------------------------------ #
+    # Text preparation
+    # ------------------------------------------------------------------ #
+
+    def prepare_teacher_text(self, user: Dict) -> str:
         """
-        Create text representation of teacher for TF-IDF
-        
-        Combines: subjects, expertise, bio, courseDescriptions
-        
-        Args:
-            teacher: Teacher document from MongoDB
-            
-        Returns:
-            Combined text string
+        Text representation of what a user TEACHES.
+
+        Used as corpus text for the teacher corpus, and as the query text when
+        finding students (direction "teach").
         """
         text_parts = []
-        
-        # Add subjects (with higher weight - repeat 3 times)
-        subjects = teacher.get('subjects', [])
+
+        # Legacy fields, kept because older documents may still carry them.
+        subjects = user.get('subjects', [])
         if subjects:
-            subjects_text = ' '.join(subjects)
-            text_parts.extend([subjects_text] * 3)
-        
-        # Add expertise (with higher weight - repeat 2 times)
-        expertise = teacher.get('expertise', [])
+            text_parts.extend([' '.join(subjects)] * 3)
+
+        expertise = user.get('expertise', [])
         if expertise:
-            expertise_text = ' '.join(expertise)
-            text_parts.extend([expertise_text] * 2)
-        
-        # Add bio
-        bio = teacher.get('bio', '')
+            text_parts.extend([' '.join(expertise)] * 2)
+
+        bio = user.get('bio', '')
         if bio:
             text_parts.append(bio)
-        
-        # Add course descriptions
-        course_descriptions = teacher.get('courseDescriptions', [])
+
+        course_descriptions = user.get('courseDescriptions', [])
         if course_descriptions:
             text_parts.extend(course_descriptions)
-        
-        # Skills teaching (if available from different schema)
-        skills_teaching = teacher.get('skillsTeaching', [])
+
+        # The live schema: User.skillsTeaching
+        skills_teaching = user.get('skillsTeaching', [])
         if skills_teaching:
             skills_text = ' '.join([
                 s if isinstance(s, str) else s.get('name', '')
@@ -75,299 +79,294 @@ class ContentBasedEngine:
             ])
             if skills_text.strip():
                 text_parts.extend([skills_text] * 2)
-        
+
         combined_text = ' '.join(text_parts)
-        
-        return combined_text.lower().strip() if combined_text else "general teaching"
-    
-    def prepare_student_interests(self, student: Dict) -> str:
+        return combined_text.lower().strip() if combined_text else EMPTY_TEACHING_TEXT
+
+    def prepare_student_interests(self, user: Dict) -> str:
         """
-        Create text representation of student interests
-        
-        Args:
-            student: Student document from MongoDB
-            
-        Returns:
-            Combined interests text
+        Text representation of what a user wants to LEARN.
+
+        Used as the query text when finding teachers (direction "learn"), and
+        as corpus text for the student corpus.
         """
-        interests = student.get('interests', [])
-        
-        # Also check for skillsLearning
-        skills_learning = student.get('skillsLearning', [])
+        # Copy: the legacy `interests` list must not be mutated in place.
+        interests = list(user.get('interests', []) or [])
+
+        skills_learning = user.get('skillsLearning', [])
         if skills_learning:
-            skills_text = [
+            interests.extend([
                 s if isinstance(s, str) else s.get('name', '')
                 for s in skills_learning
-            ]
-            interests.extend(skills_text)
-        
-        interest_text = ' '.join(interests) if interests else ""
-        
-        return interest_text.lower().strip() if interest_text else "general learning"
-    
-    def train(self, teachers_data: List[Dict]) -> bool:
+            ])
+
+        interest_text = ' '.join([i for i in interests if i])
+        return interest_text.lower().strip() if interest_text else EMPTY_LEARNING_TEXT
+
+    # ------------------------------------------------------------------ #
+    # Metadata stored alongside each corpus entry
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _teacher_meta(user: Dict) -> Dict:
+        return {
+            'name': user.get('name', 'Unknown'),
+            'subjects': user.get('subjects', []),
+            'expertise': user.get('expertise', []),
+            'average_rating': user.get('averageRating', user.get('stats', {}).get('avgRating', 0)),
+            'years_of_experience': user.get('yearsOfExperience', 0),
+            'bio': user.get('bio', ''),
+            'skills': user.get('skillsTeaching', []),
+        }
+
+    @staticmethod
+    def _student_meta(user: Dict) -> Dict:
+        return {
+            'name': user.get('name', 'Unknown'),
+            'bio': user.get('bio', ''),
+            # What they want to learn - this is what the card shows.
+            'skills': user.get('skillsLearning', []),
+            'sessions_learned': user.get('stats', {}).get('sessionsLearned', 0),
+        }
+
+    # ------------------------------------------------------------------ #
+    # The single shared TF-IDF / similarity implementation
+    # ------------------------------------------------------------------ #
+
+    def _fit_corpus(self, documents: List[Dict], text_fn, meta_fn) -> Optional[Dict]:
+        """Vectorise a set of user documents into a searchable corpus."""
+        texts, ids, data = [], [], {}
+
+        for doc in documents:
+            doc_id = str(doc.get('_id', doc.get('id', '')))
+            if not doc_id:
+                continue
+            texts.append(text_fn(doc))
+            ids.append(doc_id)
+            data[doc_id] = meta_fn(doc)
+
+        if not texts:
+            return None
+
+        vectorizer = TfidfVectorizer(
+            max_features=500,
+            stop_words='english',
+            ngram_range=(1, 2),
+            min_df=1,
+            max_df=0.8,
+        )
+        matrix = vectorizer.fit_transform(texts)
+
+        return {'vectorizer': vectorizer, 'matrix': matrix, 'ids': ids, 'data': data}
+
+    def _query_corpus(self, corpus: Dict, query_text: str, empty_text: str, limit: int) -> List[Tuple[str, float]]:
+        """Score every entry in a corpus against one query text."""
+        if not query_text or query_text == empty_text:
+            # Nothing specific to match on - fall back to a sensible ordering
+            # instead of returning noise.
+            return self._default_recommendations(corpus, limit)
+
+        query_vector = corpus['vectorizer'].transform([query_text])
+        similarities = cosine_similarity(query_vector, corpus['matrix'])[0]
+
+        # A raw score of 0 means the query and this entry share no vocabulary at
+        # all. Keeping those just to fill `limit` hands back arbitrary people
+        # under a fabricated match percentage - every result came back at an
+        # identical 65% that way, because _normalize_scores collapses a flat
+        # all-zero array to its midpoint. Dropping them is what makes a genuine
+        # "no matches yet" answer possible.
+        hits = [(uid, raw) for uid, raw in zip(corpus['ids'], similarities) if raw > 0]
+        if not hits:
+            return []
+
+        scores = self._normalize_scores(np.array([raw for _, raw in hits]))
+        ranked = list(zip([uid for uid, _ in hits], scores))
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return ranked[:limit]
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    def train(self, teachers_data: List[Dict], students_data: Optional[List[Dict]] = None) -> bool:
         """
-        Train TF-IDF vectorizer on teacher data
-        
-        Args:
-            teachers_data: List of teacher documents from MongoDB
-            
-        Returns:
-            bool: True if training successful
+        Build both corpora. Succeeds if at least one direction is usable.
         """
         try:
-            if not teachers_data or len(teachers_data) == 0:
-                logger.warning("No teachers data provided for content-based filtering")
-                return False
-            
-            logger.info(f"🔄 Training content-based model on {len(teachers_data)} teachers...")
-            
-            # Prepare teacher documents
-            teacher_texts = []
-            self.teacher_ids = []
-            self.teacher_data = {}
-            
-            for teacher in teachers_data:
-                # Get teacher ID (handle both _id and id fields)
-                teacher_id = str(teacher.get('_id', teacher.get('id', '')))
-                if not teacher_id:
-                    continue
-                
-                text = self.prepare_teacher_text(teacher)
-                teacher_texts.append(text)
-                self.teacher_ids.append(teacher_id)
-                
-                # Store teacher metadata
-                self.teacher_data[teacher_id] = {
-                    'name': teacher.get('name', 'Unknown'),
-                    'subjects': teacher.get('subjects', []),
-                    'expertise': teacher.get('expertise', []),
-                    'average_rating': teacher.get('averageRating', teacher.get('stats', {}).get('avgRating', 0)),
-                    'years_of_experience': teacher.get('yearsOfExperience', 0),
-                    'bio': teacher.get('bio', ''),
-                    'skills_teaching': teacher.get('skillsTeaching', [])
-                }
-            
-            if not teacher_texts:
-                logger.warning("No valid teacher texts to train on")
-                return False
-            
-            # Initialize TF-IDF vectorizer
-            self.vectorizer = TfidfVectorizer(
-                max_features=500,
-                stop_words='english',
-                ngram_range=(1, 2),  # Use unigrams and bigrams
-                min_df=1,
-                max_df=0.8
+            students_data = students_data or []
+
+            self.corpora[LEARN] = self._fit_corpus(
+                teachers_data, self.prepare_teacher_text, self._teacher_meta
             )
-            
-            # Fit and transform teacher texts
-            self.teacher_features_matrix = self.vectorizer.fit_transform(teacher_texts)
-            
-            self.is_trained = True
-            
-            logger.info(f"✅ Content-based model trained successfully")
-            logger.info(f"   Teachers: {len(self.teacher_ids)}")
-            logger.info(f"   Features: {self.teacher_features_matrix.shape[1]}")
-            
-            # Save model
+            self.corpora[TEACH] = self._fit_corpus(
+                students_data, self.prepare_student_interests, self._student_meta
+            )
+
+            for direction in DIRECTIONS:
+                corpus = self.corpora[direction]
+                if corpus:
+                    logger.info(
+                        f"✅ Trained '{direction}' corpus - "
+                        f"{len(corpus['ids'])} users, {corpus['matrix'].shape[1]} features"
+                    )
+                else:
+                    logger.warning(f"⚠️  No data to train the '{direction}' corpus")
+
+            if not self.is_trained:
+                logger.warning("No corpus could be trained")
+                return False
+
             self.save_model()
-            
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Error training content-based model: {e}")
             return False
-    
-    def recommend_for_student(self, student: Dict, limit: int = 10) -> List[Tuple[str, float]]:
+
+    @property
+    def is_trained(self) -> bool:
+        return any(self.corpora.get(d) for d in DIRECTIONS)
+
+    def is_direction_trained(self, direction: str) -> bool:
+        return bool(self.corpora.get(direction))
+
+    def recommend(self, user: Dict, direction: str = LEARN, limit: int = 10) -> List[Tuple[str, float]]:
         """
-        Get top N teacher recommendations for a student based on interests
-        
-        Args:
-            student: Student document with interests
-            limit: Number of recommendations
-            
-        Returns:
-            List of (teacher_id, similarity_score) tuples
+        Top N matches for `user` in the given direction.
+
+        direction "learn" -> teachers who teach what the user wants to learn
+        direction "teach" -> students who want to learn what the user teaches
         """
-        if not self.is_trained or self.vectorizer is None:
-            logger.warning("Model not trained, cannot make predictions")
+        if direction not in DIRECTIONS:
+            logger.warning(f"Unknown direction '{direction}'")
             return []
-        
+
+        corpus = self.corpora.get(direction)
+        if not corpus:
+            logger.warning(f"'{direction}' corpus is not trained")
+            return []
+
         try:
-            # Prepare student interest vector
-            student_text = self.prepare_student_interests(student)
-            
-            if not student_text or student_text == "general learning":
-                logger.info("Student has no specific interests, using default recommendations")
-                # Return teachers sorted by rating
-                return self._get_default_recommendations(limit)
-            
-            # Transform student interests using trained vectorizer
-            student_vector = self.vectorizer.transform([student_text])
-            
-            # Calculate cosine similarity with all teachers
-            similarities = cosine_similarity(student_vector, self.teacher_features_matrix)[0]
-            
-            # Normalize scores to make them more realistic and varied
-            # Apply a scaling function to spread out the scores
-            normalized_similarities = self._normalize_scores(similarities)
-            
-            # Get teacher IDs with scores
-            teacher_scores = list(zip(self.teacher_ids, normalized_similarities))
-            
-            # Sort by similarity (descending)
-            teacher_scores.sort(key=lambda x: x[1], reverse=True)
-            
-            # Return top N
-            top_recommendations = teacher_scores[:limit]
-            
-            logger.info(f"✅ Generated {len(top_recommendations)} content-based recommendations")
-            
-            return top_recommendations
-            
+            # The mirror: whichever text describes the user's side of the match.
+            if direction == LEARN:
+                query_text = self.prepare_student_interests(user)
+                empty_text = EMPTY_LEARNING_TEXT
+            else:
+                query_text = self.prepare_teacher_text(user)
+                empty_text = EMPTY_TEACHING_TEXT
+
+            results = self._query_corpus(corpus, query_text, empty_text, limit)
+            logger.info(f"✅ Generated {len(results)} '{direction}' recommendations")
+            return results
+
         except Exception as e:
-            logger.error(f"Error generating content-based recommendations: {e}")
+            logger.error(f"Error generating '{direction}' recommendations: {e}")
             return []
-    
+
+    def recommend_for_student(self, student: Dict, limit: int = 10) -> List[Tuple[str, float]]:
+        """Backwards-compatible alias for the original one-directional call."""
+        return self.recommend(student, direction=LEARN, limit=limit)
+
+    def get_user_info(self, user_id: str, direction: str = LEARN) -> Optional[Dict]:
+        corpus = self.corpora.get(direction)
+        return corpus['data'].get(user_id) if corpus else None
+
+    # ------------------------------------------------------------------ #
+    # Scoring helpers
+    # ------------------------------------------------------------------ #
+
     def _normalize_scores(self, scores: np.ndarray) -> np.ndarray:
         """
-        Normalize similarity scores to make them more realistic and varied
-        
-        Uses a combination of min-max normalization and power scaling to:
-        1. Spread out high similarity scores
-        2. Penalize perfect matches slightly
-        3. Create more realistic percentage ranges (30-85% instead of 85-95%)
-        
-        Args:
-            scores: Raw cosine similarity scores (0-1)
-            
-        Returns:
-            Normalized scores with better distribution
+        Spread raw cosine scores into a more realistic 0.30-0.85 band.
         """
         if len(scores) == 0:
             return scores
-        
-        # Apply power transformation to spread out high scores
-        # Using power of 1.5 makes high scores (0.9) drop more than low scores (0.3)
+
         scores = np.power(scores, 1.5)
-        
-        # Apply min-max normalization to range [0.3, 0.85]
-        # This ensures scores are in a more realistic range
+
         min_score = np.min(scores)
         max_score = np.max(scores)
-        
+
         if max_score - min_score > 0:
-            # Normalize to [0, 1] first
             normalized = (scores - min_score) / (max_score - min_score)
-            # Scale to [0.3, 0.85] range
             normalized = 0.3 + (normalized * 0.55)
         else:
-            # All scores are the same, return middle value
             normalized = np.full_like(scores, 0.65)
-        
+
         return normalized
-    
-    def _get_default_recommendations(self, limit: int) -> List[Tuple[str, float]]:
+
+    @staticmethod
+    def _default_recommendations(corpus: Dict, limit: int) -> List[Tuple[str, float]]:
         """
-        Get default recommendations when student has no interests
-        Returns teachers sorted by rating with default scores
+        Ordering used when the querying user has nothing specific to match on.
+        Ranks by rating where one exists, otherwise leaves a neutral score.
         """
-        teachers_with_scores = []
-        
-        for teacher_id in self.teacher_ids:
-            teacher = self.teacher_data.get(teacher_id, {})
-            rating = teacher.get('average_rating', 0)
-            # Use rating as score (normalized to 0-1)
-            score = min(rating / 5.0, 1.0) if rating > 0 else 0.5
-            teachers_with_scores.append((teacher_id, score))
-        
-        # Sort by score
-        teachers_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
-        return teachers_with_scores[:limit]
-    
-    def get_teacher_info(self, teacher_id: str) -> Optional[Dict]:
-        """Get stored teacher metadata"""
-        return self.teacher_data.get(teacher_id)
-    
+        scored = []
+        for user_id in corpus['ids']:
+            meta = corpus['data'].get(user_id, {})
+            rating = meta.get('average_rating', 0) or 0
+            scored.append((user_id, min(rating / 5.0, 1.0) if rating > 0 else 0.5))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:limit]
+
+    # ------------------------------------------------------------------ #
+    # Persistence
+    # ------------------------------------------------------------------ #
+
     def save_model(self):
-        """Save trained model to MongoDB"""
+        """Save both corpora to MongoDB."""
         try:
-            if self.vectorizer is None or self.teacher_features_matrix is None:
-                logger.warning("No model to save")
-                return
-            
-            # Save to MongoDB instead of filesystem
             import asyncio
-            
-            # Save vectorizer
-            asyncio.create_task(
-                model_storage.save_model(
-                    'tfidf_vectorizer',
-                    self.vectorizer,
-                    {'type': 'TfidfVectorizer', 'teachers_count': len(self.teacher_ids)}
-                )
-            )
-            
-            # Save features matrix
-            asyncio.create_task(
-                model_storage.save_model(
-                    'teacher_features',
-                    self.teacher_features_matrix,
-                    {'shape': self.teacher_features_matrix.shape}
-                )
-            )
-            
-            # Save metadata
-            metadata = {
-                'teacher_ids': self.teacher_ids,
-                'teacher_data': self.teacher_data,
-                'is_trained': self.is_trained
-            }
-            asyncio.create_task(
-                model_storage.save_model(
-                    'content_metadata',
-                    metadata,
-                    {'teachers_count': len(self.teacher_ids)}
-                )
-            )
-            
-            logger.info(f"✅ Content-based model saved to MongoDB")
-            
+
+            for direction in DIRECTIONS:
+                corpus = self.corpora.get(direction)
+                if not corpus:
+                    continue
+
+                asyncio.create_task(model_storage.save_model(
+                    f'tfidf_vectorizer_{direction}',
+                    corpus['vectorizer'],
+                    {'type': 'TfidfVectorizer', 'users_count': len(corpus['ids'])},
+                ))
+                asyncio.create_task(model_storage.save_model(
+                    f'features_{direction}',
+                    corpus['matrix'],
+                    {'shape': corpus['matrix'].shape},
+                ))
+                asyncio.create_task(model_storage.save_model(
+                    f'metadata_{direction}',
+                    {'ids': corpus['ids'], 'data': corpus['data']},
+                    {'users_count': len(corpus['ids'])},
+                ))
+
+            logger.info("✅ Content-based models saved to MongoDB")
+
         except Exception as e:
             logger.error(f"Error saving content-based model: {e}")
-    
+
     async def load_model(self) -> bool:
-        """Load trained model from MongoDB"""
+        """Load whichever corpora are present in MongoDB."""
         try:
-            # Load vectorizer
-            self.vectorizer = await model_storage.load_model('tfidf_vectorizer')
-            if self.vectorizer is None:
-                logger.info("No saved vectorizer found in MongoDB")
-                return False
-            
-            # Load features matrix
-            self.teacher_features_matrix = await model_storage.load_model('teacher_features')
-            if self.teacher_features_matrix is None:
-                logger.info("No saved features matrix found in MongoDB")
-                return False
-            
-            # Load metadata
-            metadata = await model_storage.load_model('content_metadata')
-            if metadata is None:
-                logger.info("No saved metadata found in MongoDB")
-                return False
-            
-            self.teacher_ids = metadata['teacher_ids']
-            self.teacher_data = metadata['teacher_data']
-            self.is_trained = metadata['is_trained']
-            
-            logger.info(f"✅ Content-based model loaded from MongoDB")
-            logger.info(f"   Teachers: {len(self.teacher_ids)}")
-            
-            return True
-            
+            for direction in DIRECTIONS:
+                vectorizer = await model_storage.load_model(f'tfidf_vectorizer_{direction}')
+                matrix = await model_storage.load_model(f'features_{direction}')
+                metadata = await model_storage.load_model(f'metadata_{direction}')
+
+                if vectorizer is None or matrix is None or metadata is None:
+                    logger.info(f"No saved '{direction}' corpus found in MongoDB")
+                    continue
+
+                self.corpora[direction] = {
+                    'vectorizer': vectorizer,
+                    'matrix': matrix,
+                    'ids': metadata['ids'],
+                    'data': metadata['data'],
+                }
+                logger.info(f"✅ Loaded '{direction}' corpus - {len(metadata['ids'])} users")
+
+            return self.is_trained
+
         except Exception as e:
             logger.error(f"Error loading content-based model: {e}")
             return False

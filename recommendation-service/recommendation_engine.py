@@ -1,142 +1,137 @@
 """
 Content-Based Recommendation Engine
-Matches students with teachers based on skills and interests
+
+Matches users in both directions using one shared similarity engine:
+  "learn" -> teachers who teach what this user wants to learn
+  "teach" -> students who want to learn what this user teaches
 """
 import logging
 from typing import List, Dict, Optional
-from content_based import ContentBasedEngine
-from models import TeacherRecommendation
-from config import settings
+from content_based import ContentBasedEngine, LEARN, TEACH, DIRECTIONS
 
 logger = logging.getLogger(__name__)
 
 
 class RecommendationEngine:
     """
-    Content-based recommendation system that matches students with teachers
-    based on their skills, interests, and teaching expertise.
+    Content-based recommendation system built on TF-IDF + cosine similarity.
     """
-    
+
     def __init__(self):
         self.content_based_engine = ContentBasedEngine()
-    
-    async def train(self, ratings_data: List[Dict], teachers_data: List[Dict]) -> Dict[str, bool]:
+
+    async def train(
+        self,
+        ratings_data: List[Dict],
+        teachers_data: List[Dict],
+        students_data: Optional[List[Dict]] = None,
+    ) -> Dict[str, bool]:
         """
-        Train content-based recommendation model
-        
-        Args:
-            ratings_data: List of rating documents (not used for content-based)
-            teachers_data: List of teacher documents from MongoDB
-            
-        Returns:
-            Dict with training success status
+        Train both matching directions.
+
+        `ratings_data` is unused by content-based filtering; it stays in the
+        signature because the /train endpoint still reports on it.
         """
         results = {'content_based': False}
-        
-        # Train content-based filtering
-        if len(teachers_data) >= 1:
+        students_data = students_data or []
+
+        if len(teachers_data) >= 1 or len(students_data) >= 1:
             logger.info("=" * 50)
-            logger.info("Training Content-Based Filtering Model")
+            logger.info("Training Content-Based Filtering Model (both directions)")
             logger.info("=" * 50)
-            results['content_based'] = self.content_based_engine.train(teachers_data)
+            results['content_based'] = self.content_based_engine.train(teachers_data, students_data)
         else:
-            logger.warning("No teacher data available for training")
-        
+            logger.warning("No teacher or student data available for training")
+
         return results
-    
+
     async def get_recommendations(
         self,
         student_id: str,
         student_data: Dict,
         limit: int = 10,
-        excluded_teacher_ids: Optional[List[str]] = None
-    ) -> List[TeacherRecommendation]:
+        excluded_teacher_ids: Optional[List[str]] = None,
+        direction: str = LEARN,
+    ) -> List[Dict]:
         """
-        Get content-based recommendations for a student
-        
-        Matches student interests and learning goals with teacher skills
-        and expertise using TF-IDF vectorization and cosine similarity.
-        
+        Recommendations for one user in one direction.
+
         Args:
-            student_id: Student ID
-            student_data: Student document from MongoDB
-            limit: Number of recommendations to return
-            excluded_teacher_ids: Teacher IDs to exclude
-            
-        Returns:
-            List of TeacherRecommendation objects
+            student_id: the requesting user's id
+            student_data: their full user document
+            limit: how many to return
+            excluded_teacher_ids: ids to drop from the results
+            direction: "learn" (find teachers) or "teach" (find students)
         """
-        excluded_teacher_ids = excluded_teacher_ids or []
-        
-        logger.info(f"Generating content-based recommendations for student {student_id}")
-        
-        # Get content-based recommendations
-        recommendations = self.content_based_engine.recommend_for_student(
-            student_data,
-            limit=limit
+        excluded = set(excluded_teacher_ids or [])
+        # Never recommend the user to themselves - they sit in the opposite
+        # corpus too as soon as they have skills on both sides.
+        excluded.add(str(student_id))
+
+        logger.info(f"Generating '{direction}' recommendations for user {student_id}")
+
+        matches = self.content_based_engine.recommend(
+            student_data, direction=direction, limit=limit + len(excluded)
         )
-        
-        # Filter out excluded teachers
-        if excluded_teacher_ids:
-            recommendations = [
-                rec for rec in recommendations 
-                if str(rec[0]) not in excluded_teacher_ids
+
+        matches = [m for m in matches if str(m[0]) not in excluded][:limit]
+
+        enriched = []
+        for user_id, score in matches:
+            meta = self.content_based_engine.get_user_info(str(user_id), direction)
+            if not meta:
+                continue
+
+            # `skills` holds skillsTeaching for the teacher corpus and
+            # skillsLearning for the student corpus - the meaning flips with
+            # the direction, the shape does not.
+            skills = [
+                s.get('name', '') if isinstance(s, dict) else s
+                for s in meta.get('skills', [])
             ]
-            recommendations = recommendations[:limit]
-        
-        # Add reason for each recommendation
-        enriched_recommendations = []
-        for teacher_id, score in recommendations:
-            # Fetch teacher details from content_based_engine.teacher_data
-            teacher_data = self.content_based_engine.teacher_data.get(str(teacher_id))
-            if teacher_data:
-                # Get skills teaching - it's stored as 'skills_teaching' in metadata
-                skills_teaching = teacher_data.get('skills_teaching', [])
-                enriched_recommendations.append({
-                    'teacher_id': str(teacher_id),
-                    'name': teacher_data.get('name', 'Unknown'),
-                    'score': float(score) * 100,  # Convert to percentage
-                    'reason': self._generate_reason(score),
-                    'subjects': [skill.get('name', '') if isinstance(skill, dict) else skill for skill in skills_teaching],
-                    'expertise': [skill.get('name', '') if isinstance(skill, dict) else skill for skill in skills_teaching],
-                    'average_rating': teacher_data.get('average_rating', 0),
-                    'years_of_experience': teacher_data.get('years_of_experience')
-                })
-        
-        return enriched_recommendations
-    
-    def _generate_reason(self, content_score: float) -> str:
-        """
-        Generate human-readable reason for recommendation
-        """
+
+            enriched.append({
+                'teacher_id': str(user_id),
+                'name': meta.get('name', 'Unknown'),
+                'score': float(score) * 100,
+                'reason': self._generate_reason(score, direction),
+                'subjects': skills,
+                'expertise': skills,
+                'average_rating': meta.get('average_rating', 0),
+                'years_of_experience': meta.get('years_of_experience'),
+                'sessions_learned': meta.get('sessions_learned'),
+            })
+
+        return enriched
+
+    def _generate_reason(self, content_score: float, direction: str = LEARN) -> str:
+        """Human-readable reason, worded for the direction being shown."""
+        if direction == TEACH:
+            if content_score >= 0.7:
+                return "Wants to learn exactly what you teach"
+            if content_score >= 0.5:
+                return "Interested in skills close to what you teach"
+            return "Shares some learning interests with your skills"
+
         if content_score >= 0.7:
             return "Excellent match for your learning interests and goals"
-        elif content_score >= 0.5:
+        if content_score >= 0.5:
             return "Good match based on your skills and interests"
-        else:
-            return "Matches some of your learning interests"
-    
+        return "Matches some of your learning interests"
+
     async def load_models(self) -> Dict[str, bool]:
-        """
-        Load pre-trained content-based model from MongoDB
-        
-        Returns:
-            Dict indicating if model was successfully loaded
-        """
-        results = {'content_based': await self.content_based_engine.load_model()}
-        return results
-    
+        """Load pre-trained corpora from MongoDB."""
+        return {'content_based': await self.content_based_engine.load_model()}
+
     def save_models(self) -> Dict[str, bool]:
-        """
-        Save trained content-based model to disk
-        
-        Returns:
-            Dict indicating if model was successfully saved
-        """
+        """Save trained corpora."""
         results = {}
         if self.content_based_engine.is_trained:
             results['content_based'] = self.content_based_engine.save_model()
         return results
+
+    def trained_directions(self) -> Dict[str, bool]:
+        return {d: self.content_based_engine.is_direction_trained(d) for d in DIRECTIONS}
 
 
 # Global instance

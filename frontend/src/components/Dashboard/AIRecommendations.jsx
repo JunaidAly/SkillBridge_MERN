@@ -1,12 +1,48 @@
 import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
-import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, Globe, CalendarPlus, BadgeCheck } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, CalendarPlus, BadgeCheck, GraduationCap, BookOpen } from "lucide-react";
 import Button from "../../ui/Button";
 import Pagination from "../../ui/Pagination";
 import { createConversation } from "../../store/chatSlice";
 import { fetchRecommendations } from "../../store/recommendationsSlice";
 import { fetchUsers } from "../../store/usersSlice";
+
+const ITEMS_PER_PAGE = 3;
+const HIGHLY_RATED_MIN = 4;
+
+// Everything that differs between the two tabs, in one place.
+const DIRECTIONS = {
+  learn: {
+    tabLabel: "Teachers for You",
+    // The skill array on MY profile this direction matches from.
+    mySkillsField: "skillsLearning",
+    // The skill array on THEIR profile that gets listed on the card.
+    theirSkillsField: "skillsTeaching",
+    noSkillsTitle: "Add skills you want to learn",
+    noSkillsBody: "Tell us what you'd like to learn and we'll match you with teachers who can help.",
+    noMatchesBody: "No teachers match your learning goals yet — check back soon as more people join.",
+    searchEmpty: "No teachers found matching your search.",
+    fallbackSkill: "Available for Teaching",
+    // A teaching rating is meaningful here, so the filter applies.
+    supportsRatingFilter: true,
+  },
+  teach: {
+    tabLabel: "Students for You",
+    mySkillsField: "skillsTeaching",
+    theirSkillsField: "skillsLearning",
+    noSkillsTitle: "Add skills you can teach",
+    noSkillsBody: "Tell us what you can teach and we'll match you with students who want to learn it.",
+    noMatchesBody: "No students are looking for your skills yet — check back soon as more people join.",
+    searchEmpty: "No students found matching your search.",
+    fallbackSkill: "Looking to learn",
+    // Ratings on this platform come from teaching feedback, so filtering
+    // students by one would be filtering on an unrelated number.
+    supportsRatingFilter: false,
+  },
+};
+
+const skillNames = (skills) => (skills || []).map((s) => (typeof s === "string" ? s : s.name)).filter(Boolean);
 
 function AIRecommendations() {
   const navigate = useNavigate();
@@ -14,371 +50,437 @@ function AIRecommendations() {
 
   const { user } = useSelector((state) => state.auth);
   const { profile } = useSelector((state) => state.profile);
-  const { recommendations, loading: recommendationsLoading, error, method } = useSelector((state) => state.recommendations);
+  const recommendationsState = useSelector((state) => state.recommendations);
   const { users, loading: usersLoading } = useSelector((state) => state.users);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [startingChatWith, setStartingChatWith] = useState(null);
-  const [viewMode, setViewMode] = useState("recommended"); // "recommended" | "all"
-  const hasDefaultedViewMode = useRef(false);
-  const ITEMS_PER_PAGE = 3;
 
-  // Land on "All Users" by default for anyone with no learning skills set yet -
-  // "Recommended" would just be permanently empty for them otherwise. Only do
-  // this once, so it doesn't fight a manual tab click later.
+  const [direction, setDirection] = useState("learn");
+  const [startingChatWith, setStartingChatWith] = useState(null);
+  // Each tab keeps its own controls so switching back and forth doesn't reset
+  // the other tab's search, page or filters.
+  const [controls, setControls] = useState({
+    learn: { viewMode: "recommended", search: "", page: 1, highlyRated: false },
+    teach: { viewMode: "recommended", search: "", page: 1, highlyRated: false },
+  });
+  const hasDefaulted = useRef(false);
+
+  const config = DIRECTIONS[direction];
+  const ctrl = controls[direction];
+  const setCtrl = (patch) =>
+    setControls((c) => ({ ...c, [direction]: { ...c[direction], ...patch } }));
+
+  const mySkills = skillNames(profile?.[config.mySkillsField]);
+  const hasMySkills = mySkills.length > 0;
+
+  // Open on whichever tab this user can actually act on. Teach-only users would
+  // otherwise land on a permanently empty "Teachers for You".
   useEffect(() => {
-    if (hasDefaultedViewMode.current || !profile) return;
-    hasDefaultedViewMode.current = true;
-    if (!profile.skillsLearning || profile.skillsLearning.length === 0) {
-      setViewMode("all");
-    }
+    if (hasDefaulted.current || !profile) return;
+    hasDefaulted.current = true;
+
+    const canLearn = (profile.skillsLearning || []).length > 0;
+    const canTeach = (profile.skillsTeaching || []).length > 0;
+
+    if (!canLearn && canTeach) setDirection("teach");
+
+    // Someone with no skills on a side can still browse "All Users" there.
+    setControls((c) => ({
+      learn: { ...c.learn, viewMode: canLearn ? "recommended" : "all" },
+      teach: { ...c.teach, viewMode: canTeach ? "recommended" : "all" },
+    }));
   }, [profile]);
 
-  // Create a map of teacher data for quick lookup
-  const teacherMap = users.reduce((acc, user) => {
-    acc[user.id || user._id] = user;
+  useEffect(() => {
+    dispatch(fetchUsers());
+    // Fetch both directions up front - the API answers with an empty list and
+    // a reason when a side has no skills, so this is safe either way.
+    dispatch(fetchRecommendations({ limit: 10, direction: "learn" }));
+    dispatch(fetchRecommendations({ limit: 10, direction: "teach" }));
+  }, [dispatch]);
+
+  const userMap = users.reduce((acc, u) => {
+    acc[u.id || u._id] = u;
     return acc;
   }, {});
 
-  // "All Users" mode normalizes every teaching user into the same shape the
-  // recommendation cards expect, minus an AI score (there isn't one).
-  const allTeachers = users
-    .filter((u) => u.role !== "admin" && (u.skillsTeaching || []).length > 0)
+  const { recommendations, loading: recsLoading, error, method } = recommendationsState[direction];
+
+  // "All Users" normalises everyone with skills on the relevant side into the
+  // same shape the cards expect, minus an AI score (there isn't one).
+  const allUsers = users
+    .filter((u) => u.role !== "admin" && (u[config.theirSkillsField] || []).length > 0)
     .map((u) => ({
       teacher_id: u.id,
       name: u.name,
-      subjects: (u.skillsTeaching || []).map((s) => s.name),
+      subjects: skillNames(u[config.theirSkillsField]),
       expertise: [],
       score: null,
       average_rating: u.stats?.avgRating || 0,
       reason: null,
     }));
 
-  const sourceList = viewMode === "recommended" ? recommendations : allTeachers;
-  const loading = viewMode === "recommended" ? recommendationsLoading : usersLoading;
-  const activeError = viewMode === "recommended" ? error : null;
+  const isRecommendedView = ctrl.viewMode === "recommended";
+  const sourceList = isRecommendedView ? recommendations : allUsers;
+  const loading = isRecommendedView ? recsLoading : usersLoading;
+  const activeError = isRecommendedView ? error : null;
 
-  // Sort recommendations by match score (highest first) - "all" mode has no
-  // score to sort by, so leave it in the order it came in.
-  const sortedRecommendations = viewMode === "recommended"
-    ? [...sourceList].sort((a, b) => b.score - a.score)
-    : sourceList;
+  const sorted = isRecommendedView ? [...sourceList].sort((a, b) => b.score - a.score) : sourceList;
 
-  // Filter recommendations based on search query and exclude current user
-  const filteredRecommendations = sortedRecommendations.filter((teacher) => {
-    // Exclude current logged-in user
-    if (teacher.teacher_id === user?.userId || teacher.teacher_id === user?.id) {
-      return false;
+  const filtered = sorted.filter((match) => {
+    if (match.teacher_id === user?.userId || match.teacher_id === user?.id) return false;
+
+    if (config.supportsRatingFilter && ctrl.highlyRated) {
+      if (!(match.average_rating >= HIGHLY_RATED_MIN)) return false;
     }
-    
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const name = teacher.name?.toLowerCase() || "";
-    const skills = teacher.subjects?.join(" ").toLowerCase() || "";
-    const expertise = teacher.expertise?.join(" ").toLowerCase() || "";
-    return name.includes(query) || skills.includes(query) || expertise.includes(query);
+
+    if (!ctrl.search) return true;
+    const query = ctrl.search.toLowerCase();
+    return (
+      (match.name?.toLowerCase() || "").includes(query) ||
+      (match.subjects?.join(" ").toLowerCase() || "").includes(query) ||
+      (match.expertise?.join(" ").toLowerCase() || "").includes(query)
+    );
   });
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredRecommendations.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedRecommendations = filteredRecommendations.slice(startIndex, endIndex);
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const startIndex = (ctrl.page - 1) * ITEMS_PER_PAGE;
+  const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
-  // Reset to page 1 when search query or view mode changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, viewMode]);
-
-  useEffect(() => {
-    // Fetch all users for teacher details
-    dispatch(fetchUsers());
-    
-    // Only fetch if user has skills they want to learn (is a learner/student)
-    if (profile?.skillsLearning && profile.skillsLearning.length > 0) {
-      dispatch(fetchRecommendations({ limit: 10 }));
-    }
-  }, [dispatch, profile]);
-
-  const handleMessage = async (teacherId) => {
+  const handleMessage = async (targetId) => {
     try {
-      setStartingChatWith(teacherId);
-      const result = await dispatch(createConversation(teacherId)).unwrap();
-      navigate('/chat', { state: { conversationId: result._id } });
-    } catch (error) {
-      console.error('Failed to create conversation:', error);
-      alert('Failed to start conversation. Please try again.');
+      setStartingChatWith(targetId);
+      const result = await dispatch(createConversation(targetId)).unwrap();
+      navigate("/chat", { state: { conversationId: result._id } });
+    } catch (err) {
+      console.error("Failed to create conversation:", err);
     } finally {
       setStartingChatWith(null);
     }
   };
 
-  const handleSchedule = async (teacherId) => {
+  const handleSchedule = async (targetId) => {
     try {
-      setStartingChatWith(teacherId);
-      const result = await dispatch(createConversation(teacherId)).unwrap();
-      navigate('/chat', { state: { conversationId: result._id, openSchedule: true } });
-    } catch (error) {
-      console.error('Failed to start scheduling:', error);
-      alert('Failed to start scheduling. Please try again.');
+      setStartingChatWith(targetId);
+      const result = await dispatch(createConversation(targetId)).unwrap();
+      navigate("/chat", { state: { conversationId: result._id, openSchedule: true } });
+    } catch (err) {
+      console.error("Failed to start scheduling:", err);
     } finally {
       setStartingChatWith(null);
     }
   };
 
-  // Wait for the profile to load before rendering - not a "no learning
-  // skills" gate anymore, since "All Users" browsing works without any.
-  if (!profile) {
-    return null;
-  }
+  if (!profile) return null;
+
+  // "You haven't set this up" is a different problem from "we have nothing for
+  // you", and only the first one is actionable - so they get different states.
+  const showNoSkillsState = isRecommendedView && !hasMySkills;
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm">
-      {/* Header */}
-      <div className="flex flex-col gap-3 mb-6">
-        <div className="flex items-center gap-2">
-          <Sparkles className="text-black" size={20} />
-          <h2 className="font-family-poppins text-xl font-semibold text-black">
-            AI Recommended Matches
-          </h2>
-        </div>
-
-        {/* View mode toggle */}
-        <div className="inline-flex w-fit rounded-lg bg-light-gray p-1">
-          <button
-            onClick={() => setViewMode("recommended")}
-            className={`px-4 py-1.5 rounded-md font-family-poppins text-sm font-medium transition-all ${
-              viewMode === "recommended" ? "bg-white text-black shadow-sm" : "text-gray"
-            }`}
-          >
-            Recommended
-          </button>
-          <button
-            onClick={() => setViewMode("all")}
-            className={`px-4 py-1.5 rounded-md font-family-poppins text-sm font-medium transition-all ${
-              viewMode === "all" ? "bg-white text-black shadow-sm" : "text-gray"
-            }`}
-          >
-            All Users
-          </button>
-        </div>
+      <div className="flex items-center gap-2 mb-4">
+        <Sparkles className="text-black" size={20} />
+        <h2 className="font-family-poppins text-xl font-semibold text-black">
+          AI Recommended Matches
+        </h2>
       </div>
 
-      {/* Search and Filter */}
+      {/* Direction tabs */}
+      <div className="flex gap-1 border-b border-[#E5E5E5] mb-4">
+        {Object.entries(DIRECTIONS).map(([key, cfg]) => {
+          const Icon = key === "learn" ? GraduationCap : BookOpen;
+          const isActive = direction === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setDirection(key)}
+              className={`flex items-center gap-2 px-4 py-2.5 font-family-poppins text-sm font-medium border-b-2 -mb-px transition-all ${
+                isActive
+                  ? "border-teal text-teal"
+                  : "border-transparent text-gray hover:text-black"
+              }`}
+            >
+              <Icon size={16} />
+              {cfg.tabLabel}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Recommended / All Users toggle */}
+      <div className="inline-flex w-fit rounded-lg bg-light-gray p-1 mb-4">
+        <button
+          onClick={() => setCtrl({ viewMode: "recommended", page: 1 })}
+          className={`px-4 py-1.5 rounded-md font-family-poppins text-sm font-medium transition-all ${
+            isRecommendedView ? "bg-white text-black shadow-sm" : "text-gray"
+          }`}
+        >
+          Recommended
+        </button>
+        <button
+          onClick={() => setCtrl({ viewMode: "all", page: 1 })}
+          className={`px-4 py-1.5 rounded-md font-family-poppins text-sm font-medium transition-all ${
+            !isRecommendedView ? "bg-white text-black shadow-sm" : "text-gray"
+          }`}
+        >
+          All Users
+        </button>
+      </div>
+
+      {/* Search and filter */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={18} />
           <input
             type="text"
             placeholder="Search by skill or name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={ctrl.search}
+            onChange={(e) => setCtrl({ search: e.target.value, page: 1 })}
             className="w-full pl-10 pr-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal transition-all"
           />
         </div>
-        <button className="px-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-josefin font-bold text-sm text-gray hover:bg-gray-50 transition-all">
-          Highly Rated
-        </button>
+        {config.supportsRatingFilter && (
+          <button
+            onClick={() => setCtrl({ highlyRated: !ctrl.highlyRated, page: 1 })}
+            aria-pressed={ctrl.highlyRated}
+            className={`px-4 py-2.5 border rounded-lg font-family-josefin font-bold text-sm transition-all ${
+              ctrl.highlyRated
+                ? "border-teal bg-light-teal text-teal"
+                : "border-[#D0D0D0] text-gray hover:bg-gray-50"
+            }`}
+          >
+            Highly Rated
+          </button>
+        )}
       </div>
 
-      {/* AI Match Score Badge */}
-      {viewMode === "recommended" && (
+      {isRecommendedView && !showNoSkillsState && (
         <div className="flex items-center gap-2 mb-6 px-2 py-3 border border-teal bg-light-teal rounded-full">
-          <span className="flex items-center gap-1.5 px-3 py-1.5 ">
+          <span className="flex items-center gap-1.5 px-3 py-1.5">
             <Brain className="text-teal" size={14} />
             <span className="font-family-poppins text-sm font-medium text-black">
               AI Match Score
             </span>
           </span>
           <span className="font-family-poppins text-sm text-gray">
-            {method === 'content-based' && 'Based on Skills | Ratings | Feedbacks'}
-            {method === 'collaborative' && 'Based on Similar Students'}
-            {method === 'hybrid' && 'Based on Skills & Similar Students'}
+            {method === "content-based" && "Based on Skills | Ratings | Feedbacks"}
+            {method === "collaborative" && "Based on Similar Students"}
+            {method === "hybrid" && "Based on Skills & Similar Students"}
           </span>
         </div>
       )}
 
-      {/* Loading State */}
-      {loading && (
+      {/* You haven't added the skills this direction needs */}
+      {showNoSkillsState && (
+        <div className="text-center py-12">
+          <div className="w-12 h-12 bg-teal/10 rounded-full flex items-center justify-center mx-auto mb-3">
+            <Sparkles className="text-teal" size={22} />
+          </div>
+          <p className="font-family-poppins text-base font-semibold text-black mb-1">
+            {config.noSkillsTitle}
+          </p>
+          <p className="font-family-poppins text-sm text-gray max-w-sm mx-auto mb-5">
+            {config.noSkillsBody}
+          </p>
+          <Link
+            to="/profile"
+            className="inline-block font-family-poppins text-sm font-semibold text-white bg-teal px-6 py-2.5 rounded-lg hover:opacity-90 transition-all"
+          >
+            Update your profile
+          </Link>
+        </div>
+      )}
+
+      {!showNoSkillsState && loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-teal" />
         </div>
       )}
 
-      {/* Error State */}
-      {activeError && !loading && (
+      {!showNoSkillsState && activeError && !loading && (
         <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
           <div className="flex-1">
             <p className="font-family-poppins text-sm font-medium text-amber-900">
               AI Recommendations Temporarily Unavailable
             </p>
-            <p className="font-family-poppins text-sm text-amber-700 mt-1">
-              {activeError}
-            </p>
+            <p className="font-family-poppins text-sm text-amber-700 mt-1">{activeError}</p>
             <p className="font-family-poppins text-sm text-amber-600 mt-2">
-              💡 In the meantime, you can browse teachers manually or contact support.
+              💡 In the meantime, you can browse users manually or contact support.
             </p>
           </div>
         </div>
       )}
 
-      {/* Empty State */}
-      {!loading && !activeError && filteredRecommendations.length === 0 && (
+      {/* We genuinely have nothing to show - distinct from the state above */}
+      {!showNoSkillsState && !loading && !activeError && filtered.length === 0 && (
         <div className="text-center py-12">
           <p className="font-family-poppins text-gray">
-            {searchQuery
-              ? "No teachers found matching your search."
-              : viewMode === "recommended"
-              ? "No recommendations available yet."
-              : "No teachers available yet."}
+            {ctrl.search
+              ? config.searchEmpty
+              : ctrl.highlyRated
+              ? "No highly rated matches — try turning off the filter."
+              : isRecommendedView
+              ? config.noMatchesBody
+              : "Nobody here yet — check back soon."}
           </p>
         </div>
       )}
 
-      {/* Match Cards */}
-      {!loading && !activeError && filteredRecommendations.length > 0 && (
+      {!showNoSkillsState && !loading && !activeError && filtered.length > 0 && (
         <>
           <div className="space-y-4">
-            {paginatedRecommendations.map((teacher) => {
-            // Get full teacher data from users store
-            const teacherData = teacherMap[teacher.teacher_id];
-            
-            // Get primary skill being taught
-            const primarySkill = teacher.subjects?.[0] || teacher.expertise?.[0] || "Available for Teaching";
+            {paginated.map((match) => {
+              const matchData = userMap[match.teacher_id];
+              const theirSkills = match.subjects || [];
 
-            return (
-              <div
-                key={teacher.teacher_id}
-                className="border border-[#E5E5E5] rounded-xl p-5"
-              >
-                <div className="flex flex-col sm:flex-row gap-4">
-                  {/* Avatar */}
-                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
-                    {teacherData?.avatar ? (
-                      <img
-                        src={teacherData.avatar}
-                        alt={teacher.name}
-                        className="w-full h-full rounded-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-gray text-xl font-medium">
-                        {teacher.name?.charAt(0) || 'T'}
-                      </span>
-                    )}
-                  </div>
+              // On the students tab, lead with the overlap between what they
+              // want and what I teach - that's the reason they're here.
+              const matched = direction === "teach"
+                ? theirSkills.filter((s) =>
+                    mySkills.some((mine) => mine.toLowerCase() === s.toLowerCase())
+                  )
+                : [];
+              const headlineSkills = matched.length > 0 ? matched : theirSkills;
+              const primarySkill = headlineSkills[0]
+                ? headlineSkills.join(", ")
+                : config.fallbackSkill;
 
-                  {/* Info */}
-                  <div className="flex-1">
-                    <h3 className="font-family-poppins text-lg font-semibold text-black flex items-center gap-1.5">
-                      {teacher.name}
-                      {teacherData?.verificationStatus === "verified" && (
-                        <BadgeCheck className="text-blue-500 shrink-0" size={18} fill="currentColor" stroke="white" strokeWidth={2} aria-label="Verified teacher" />
-                      )}
-                    </h3>
-                    <p className="font-family-poppins text-sm text-gray mb-2">
-                      {primarySkill}
-                    </p>
-                    {/* Stats */}
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                      
-                      {/* AI Match Score */}
-                      {teacher.score !== null && (
-                        <span className="flex items-center gap-1">
-                          <Brain className="text-teal" size={14} />
-                          <span className="font-family-poppins text-teal font-medium">
-                            {Math.round(teacher.score)}% Match
-                          </span>
+              const sessionsLearned =
+                matchData?.stats?.sessionsLearned ?? match.sessions_learned ?? 0;
+
+              return (
+                <div key={match.teacher_id} className="border border-[#E5E5E5] rounded-xl p-5">
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                      {matchData?.avatar ? (
+                        <img
+                          src={matchData.avatar}
+                          alt={match.name}
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-gray text-xl font-medium">
+                          {match.name?.charAt(0) || "U"}
                         </span>
                       )}
-
-                      {/* Sessions Taught */}
-                      <span className="flex items-center gap-1">
-                        <Monitor className="text-gray" size={14} />
-                        <span className="font-family-poppins text-gray">
-                          {teacherData?.stats?.sessionsTaught || 0} Sessions Taught
-                        </span>
-                      </span>
-
-                      {/* Location */}
-                      {teacherData?.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="text-gray" size={14} />
-                          <span className="font-family-poppins text-gray">{teacherData.location}</span>
-                        </span>
-                      )}
-
-                      {/* Timezone */}
-                      {teacherData?.timezone && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="text-gray" size={14} />
-                          <span className="font-family-poppins text-gray">{teacherData.timezone}</span>
-                        </span>
-                      )}
-
-                      {/* Rating */}
-                      <span className="flex items-center gap-1">
-                        <Star className="text-yellow-500 fill-yellow-500" size={14} />
-                        <span className="font-family-poppins text-gray">
-                          {teacher.average_rating && teacher.average_rating > 0 
-                            ? `${teacher.average_rating.toFixed(1)}` 
-                            : "No ratings yet"}
-                        </span>
-                      </span>
-
                     </div>
 
-                    {/* Reason */}
-                    {teacher.reason && (
-                      <p className="font-family-poppins text-xs text-gray-500 italic mt-2">
-                        {teacher.reason}
+                    <div className="flex-1">
+                      <h3 className="font-family-poppins text-lg font-semibold text-black flex items-center gap-1.5">
+                        {match.name}
+                        {matchData?.verificationStatus === "verified" && (
+                          <BadgeCheck
+                            className="text-blue-500 shrink-0"
+                            size={18}
+                            fill="currentColor"
+                            stroke="white"
+                            strokeWidth={2}
+                            aria-label="Verified user"
+                          />
+                        )}
+                      </h3>
+                      <p className="font-family-poppins text-sm text-gray mb-2">
+                        {direction === "teach" && matched.length > 0
+                          ? `Wants to learn: ${primarySkill}`
+                          : primarySkill}
                       </p>
-                    )}
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                        {match.score !== null && (
+                          <span className="flex items-center gap-1">
+                            <Brain className="text-teal" size={14} />
+                            <span className="font-family-poppins text-teal font-medium">
+                              {Math.round(match.score)}% Match
+                            </span>
+                          </span>
+                        )}
+
+                        {/* Sessions: taught for teachers, learned for students.
+                            The opposite figure would be meaningless here. */}
+                        <span className="flex items-center gap-1">
+                          <Monitor className="text-gray" size={14} />
+                          <span className="font-family-poppins text-gray">
+                            {direction === "teach"
+                              ? `${sessionsLearned} Sessions Learned`
+                              : `${matchData?.stats?.sessionsTaught || 0} Sessions Taught`}
+                          </span>
+                        </span>
+
+                        {matchData?.location && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="text-gray" size={14} />
+                            <span className="font-family-poppins text-gray">{matchData.location}</span>
+                          </span>
+                        )}
+
+                        {matchData?.timezone && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="text-gray" size={14} />
+                            <span className="font-family-poppins text-gray">{matchData.timezone}</span>
+                          </span>
+                        )}
+
+                        {/* Ratings come from teaching feedback, so they're only
+                            shown when the card is actually about a teacher. */}
+                        {direction === "learn" && (
+                          <span className="flex items-center gap-1">
+                            <Star className="text-yellow-500 fill-yellow-500" size={14} />
+                            <span className="font-family-poppins text-gray">
+                              {match.average_rating > 0
+                                ? match.average_rating.toFixed(1)
+                                : "No ratings yet"}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+
+                      {match.reason && (
+                        <p className="font-family-poppins text-xs text-gray-500 italic mt-2">
+                          {match.reason}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-5">
+                    <Button
+                      variant="outline"
+                      className="flex-1 py-2.5"
+                      onClick={() => navigate(`/profile/${match.teacher_id}`)}
+                    >
+                      View Profile
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="flex-1 py-2.5"
+                      onClick={() => handleMessage(match.teacher_id)}
+                    >
+                      {startingChatWith === match.teacher_id ? "Starting..." : "Message"}
+                    </Button>
+                    <button
+                      onClick={() => handleSchedule(match.teacher_id)}
+                      disabled={startingChatWith === match.teacher_id}
+                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg font-family-poppins font-medium text-sm text-white bg-dark-blue hover:opacity-90 transition-all disabled:opacity-50 shrink-0"
+                      aria-label="Schedule session"
+                      title="Schedule session"
+                    >
+                      <CalendarPlus size={16} />
+                      <span className="hidden sm:inline">Schedule</span>
+                    </button>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-3 mt-5">
-                  <Button
-                    variant="outline"
-                    className="flex-1 py-2.5"
-                    onClick={() => navigate(`/profile/${teacher.teacher_id}`)}
-                  >
-                    View Profile
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="flex-1 py-2.5"
-                    onClick={() => handleMessage(teacher.teacher_id)}
-                    disabled={startingChatWith === teacher.teacher_id}
-                  >
-                    {startingChatWith === teacher.teacher_id ? 'Starting...' : 'Message'}
-                  </Button>
-                  <button
-                    onClick={() => handleSchedule(teacher.teacher_id)}
-                    disabled={startingChatWith === teacher.teacher_id}
-                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg font-family-poppins font-medium text-sm text-white bg-dark-blue hover:opacity-90 transition-all disabled:opacity-50 shrink-0"
-                    aria-label="Schedule session"
-                    title="Schedule session"
-                  >
-                    <CalendarPlus size={16} />
-                    <span className="hidden sm:inline">Schedule</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-          />
-        )}
-      </>
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={ctrl.page}
+              totalPages={totalPages}
+              onPageChange={(p) => setCtrl({ page: p })}
+            />
+          )}
+        </>
       )}
     </div>
   );

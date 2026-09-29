@@ -2,14 +2,21 @@
 Pydantic models for request/response validation (Pydantic v2)
 """
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 
 
 class RecommendationRequest(BaseModel):
     """Request model for getting recommendations"""
-    student_id: str = Field(..., description="Student ID to get recommendations for")
+    # Named student_id for backwards compatibility; it is simply the id of the
+    # user asking, whichever direction they are matching in.
+    student_id: str = Field(..., description="ID of the user requesting recommendations")
     limit: int = Field(10, ge=1, le=50, description="Number of recommendations to return")
+    direction: Literal["learn", "teach"] = Field(
+        "learn",
+        description='"learn" = teachers who teach what I want to learn; '
+                    '"teach" = students who want to learn what I teach',
+    )
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -31,6 +38,7 @@ class TeacherRecommendation(BaseModel):
     expertise: List[str] = Field(default_factory=list, description="Areas of expertise")
     average_rating: Optional[float] = Field(None, description="Average rating from students")
     years_of_experience: Optional[int] = Field(None, description="Years of teaching experience")
+    sessions_learned: Optional[int] = Field(None, description="Completed sessions as a learner (direction=teach)")
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,6 +47,7 @@ class RecommendationResponse(BaseModel):
     """Response model for recommendations"""
     recommendations: List[TeacherRecommendation]
     student_id: str
+    direction: str = Field("learn", description="Which matching direction produced these")
     method: str = Field(..., description="collaborative, content-based, or hybrid")
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     

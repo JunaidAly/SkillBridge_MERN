@@ -169,18 +169,20 @@ async def train_models(
         logger.info("📊 Fetching data from MongoDB...")
         ratings_data = await db.get_all_ratings()
         teachers_data = await db.get_all_teachers()
+        students_data = await db.get_all_students()
         
         logger.info(f"   Ratings: {len(ratings_data)}")
         logger.info(f"   Teachers: {len(teachers_data)}")
+        logger.info(f"   Students: {len(students_data)}")
         
-        if not ratings_data and not teachers_data:
+        if not teachers_data and not students_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No data available for training. Please ensure ratings and teachers exist in database."
             )
         
         # Train models
-        results = await recommendation_engine.train(ratings_data, teachers_data)
+        results = await recommendation_engine.train(ratings_data, teachers_data, students_data)
         
         models_trained = [k for k, v in results.items() if v]
         
@@ -191,7 +193,8 @@ async def train_models(
                 models_trained=[],
                 training_stats={
                     "ratings_count": len(ratings_data),
-                    "teachers_count": len(teachers_data)
+                    "teachers_count": len(teachers_data),
+                    "students_count": len(students_data)
                 }
             )
         
@@ -206,7 +209,9 @@ async def train_models(
             training_stats={
                 "ratings_count": len(ratings_data),
                 "teachers_count": len(teachers_data),
-                "content_based_trained": results.get('content_based', False)
+                "students_count": len(students_data),
+                "content_based_trained": results.get('content_based', False),
+                "directions_trained": recommendation_engine.trained_directions()
             }
         )
         
@@ -238,41 +243,47 @@ async def get_recommendations(
         RecommendationResponse with list of recommended teachers
     """
     try:
-        logger.info(f"📍 Recommendation request for student: {request.student_id}")
+        direction = request.direction
+        logger.info(f"📍 '{direction}' recommendation request for user: {request.student_id}")
         
-        # Check if model is trained
-        if not recommendation_engine.content_based_engine.is_trained:
+        # Check the corpus this direction searches is actually trained
+        if not recommendation_engine.content_based_engine.is_direction_trained(direction):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Model not trained yet. Please call /train endpoint first."
+                detail=f"The '{direction}' model is not trained yet. Please call /train first."
             )
         
-        # Fetch student data
-        student_data = await db.get_student_by_id(request.student_id)
+        # Any user can ask, in either direction - no role filter on the lookup.
+        student_data = await db.get_user_by_id(request.student_id)
         
         if not student_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Student with ID {request.student_id} not found"
+                detail=f"User with ID {request.student_id} not found"
             )
         
-        # Get student's existing ratings to exclude already-rated teachers
-        student_ratings = await db.get_student_ratings(request.student_id)
-        excluded_teacher_ids = [str(r.get('teacherId', '')) for r in student_ratings]
+        # Already-rated teachers are only worth excluding when looking FOR
+        # teachers; a past rating says nothing about a student match.
+        excluded_teacher_ids = []
+        if direction == "learn":
+            student_ratings = await db.get_student_ratings(request.student_id)
+            excluded_teacher_ids = [str(r.get('teacherId', '')) for r in student_ratings]
         
         # Generate recommendations
         recommendations = await recommendation_engine.get_recommendations(
             student_id=request.student_id,
             student_data=student_data,
             limit=request.limit,
-            excluded_teacher_ids=excluded_teacher_ids
+            excluded_teacher_ids=excluded_teacher_ids,
+            direction=direction
         )
         
         if not recommendations:
-            logger.warning(f"No recommendations generated for student {request.student_id}")
+            logger.warning(f"No '{direction}' recommendations for user {request.student_id}")
             return RecommendationResponse(
                 recommendations=[],
                 student_id=request.student_id,
+                direction=direction,
                 method="none",
                 generated_at=datetime.utcnow()
             )
@@ -285,6 +296,7 @@ async def get_recommendations(
         return RecommendationResponse(
             recommendations=recommendations,
             student_id=request.student_id,
+            direction=direction,
             method=method,
             generated_at=datetime.utcnow()
         )

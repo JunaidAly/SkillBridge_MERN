@@ -55,11 +55,11 @@ export const loginWithGoogle = createAsyncThunk(
   'auth/google',
   async (googleData, { rejectWithValue }) => {
     try {
+      // Token only. The server verifies it with Google and derives the
+      // identity from that - sending email/name here would be an unverified
+      // claim, which is exactly what made this endpoint impersonatable before.
       const res = await apiClient.post('/auth/google', {
-        tokenId: googleData.credential,
-        email: googleData.email,
-        name: googleData.name,
-        googleId: googleData.sub,
+        credential: googleData.credential,
       });
       return res.data;
     } catch (err) {
@@ -73,12 +73,9 @@ export const loginWithFacebook = createAsyncThunk(
   'auth/facebook',
   async (facebookData, { rejectWithValue }) => {
     try {
+      // Token only - see the note in loginWithGoogle above.
       const res = await apiClient.post('/auth/facebook', {
         accessToken: facebookData.accessToken,
-        email: facebookData.email,
-        name: facebookData.name,
-        facebookId: facebookData.userID,
-        userID: facebookData.userID,
       });
       return res.data;
     } catch (err) {

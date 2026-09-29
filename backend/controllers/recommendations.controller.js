@@ -5,46 +5,53 @@ const RECOMMENDATION_SERVICE_URL = process.env.RECOMMENDATION_SERVICE_URL || 'ht
 const RECOMMENDATION_SERVICE_API_KEY = process.env.RECOMMENDATION_SERVICE_API_KEY || 'your-secret-api-key-here';
 
 /**
- * Get AI-powered teacher recommendations for a student
+ * Get AI-powered recommendations in either direction.
+ *
+ *   ?direction=learn (default) -> teachers who teach what I want to learn
+ *   ?direction=teach           -> students who want to learn what I teach
+ *
  * @route GET /api/recommendations/me
- * @access Private (Student only)
+ * @access Private
  */
 export const getMyRecommendations = async (req, res) => {
   try {
     // JWT contains { userId: ... } not { id: ... }
     const userId = req.user.userId || req.user.id || req.user._id;
     const limit = parseInt(req.query.limit) || 10;
-    
-    console.log('🔍 req.user:', req.user);
-    console.log('🔍 Extracted userId:', userId);
+    const direction = req.query.direction === 'teach' ? 'teach' : 'learn';
 
-    // Fetch full user data from database (JWT doesn't have skillsLearning)
+    // Fetch full user data from database (JWT doesn't carry the skill arrays)
     const user = await User.findById(userId);
     if (!user) {
-      console.log('❌ User not found in database for ID:', userId);
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
-    console.log('✅ User found:', user.name);
 
-    // Validate user has learning skills (is a student/learner)
-    if (!user.skillsLearning || user.skillsLearning.length === 0) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only users with learning skills can get recommendations. Please add skills you want to learn in your profile.'
+    // Each direction needs the skills on the asking user's own side of the
+    // match. Answered as an empty result rather than an error so the client
+    // can show a "add some skills" empty state instead of a failure.
+    const requiredSkills = direction === 'teach' ? user.skillsTeaching : user.skillsLearning;
+    if (!requiredSkills || requiredSkills.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          recommendations: [],
+          student_id: userId.toString(),
+          direction,
+          method: 'none',
+          reason: direction === 'teach' ? 'no_teaching_skills' : 'no_learning_skills',
+        }
       });
     }
 
-    // Call Python recommendation service
-    console.log('🔍 Requesting recommendations for user:', userId);
     const response = await axios.post(
       `${RECOMMENDATION_SERVICE_URL}/recommend`,
       {
         student_id: userId.toString(),
-        limit: limit
+        limit: limit,
+        direction: direction
       },
       {
         headers: {
@@ -55,9 +62,6 @@ export const getMyRecommendations = async (req, res) => {
       }
     );
 
-    console.log('📡 Python service response:', JSON.stringify(response.data, null, 2));
-
-    // Return recommendations
     res.status(200).json({
       success: true,
       data: response.data
@@ -86,7 +90,7 @@ export const getMyRecommendations = async (req, res) => {
       if (status === 404) {
         return res.status(404).json({
           success: false,
-          message: 'Student not found'
+          message: 'User not found'
         });
       }
 

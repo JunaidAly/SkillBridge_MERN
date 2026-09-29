@@ -1,17 +1,35 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import client from '../api/client';
 
-// Async thunk to fetch AI recommendations
+// Both directions are fetched through the same endpoint and kept side by side,
+// so switching tabs doesn't discard the other tab's results or refetch it.
+//   learn -> teachers who teach what I want to learn
+//   teach -> students who want to learn what I teach
+const emptyDirection = {
+  recommendations: [],
+  method: null,
+  generatedAt: null,
+  loading: false,
+  error: null,
+  // Set by the API when the user simply hasn't added the skills this direction
+  // needs - distinct from "we found nothing for you".
+  reason: null,
+  loaded: false,
+};
+
 export const fetchRecommendations = createAsyncThunk(
   'recommendations/fetchRecommendations',
-  async ({ limit = 10 }, { rejectWithValue }) => {
+  async ({ limit = 10, direction = 'learn' } = {}, { rejectWithValue }) => {
     try {
-      const response = await client.get(`/recommendations/me?limit=${limit}`);
-      return response.data.data;
-    } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch recommendations'
+      const response = await client.get(
+        `/recommendations/me?limit=${limit}&direction=${direction}`
       );
+      return { direction, data: response.data.data };
+    } catch (error) {
+      return rejectWithValue({
+        direction,
+        message: error.response?.data?.message || 'Failed to fetch recommendations',
+      });
     }
   }
 );
@@ -19,37 +37,41 @@ export const fetchRecommendations = createAsyncThunk(
 const recommendationsSlice = createSlice({
   name: 'recommendations',
   initialState: {
-    recommendations: [],
-    method: null,
-    generatedAt: null,
-    loading: false,
-    error: null,
+    learn: { ...emptyDirection },
+    teach: { ...emptyDirection },
   },
   reducers: {
     clearRecommendations: (state) => {
-      state.recommendations = [];
-      state.error = null;
+      state.learn = { ...emptyDirection };
+      state.teach = { ...emptyDirection };
     },
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchRecommendations.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+      .addCase(fetchRecommendations.pending, (state, action) => {
+        const slot = state[action.meta.arg?.direction || 'learn'];
+        slot.loading = true;
+        slot.error = null;
       })
       .addCase(fetchRecommendations.fulfilled, (state, action) => {
-        state.loading = false;
-        state.recommendations = action.payload.recommendations || [];
-        state.method = action.payload.method;
-        state.generatedAt = action.payload.generated_at;
-        state.error = null;
+        const { direction, data } = action.payload;
+        state[direction] = {
+          recommendations: data.recommendations || [],
+          method: data.method,
+          generatedAt: data.generated_at,
+          loading: false,
+          error: null,
+          reason: data.reason || null,
+          loaded: true,
+        };
       })
       .addCase(fetchRecommendations.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-        state.recommendations = [];
-        state.method = null;
-        state.generatedAt = null;
+        const direction = action.payload?.direction || action.meta.arg?.direction || 'learn';
+        state[direction] = {
+          ...emptyDirection,
+          error: action.payload?.message || 'Failed to fetch recommendations',
+          loaded: true,
+        };
       });
   },
 });

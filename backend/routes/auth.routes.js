@@ -4,6 +4,7 @@ import VerificationCode from '../models/VerificationCode.js';
 import jwt from 'jsonwebtoken';
 import { sendVerificationCode, sendPasswordResetCode } from '../utils/emailService.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { verifyGoogleCredential, verifyFacebookAccessToken, OAuthError } from '../utils/oauthVerify.js';
 
 const router = express.Router();
 
@@ -106,25 +107,34 @@ router.post('/login', async (req, res) => {
 });
 
 // Google OAuth
+// Identity comes ONLY from the verified Google token - never from the request
+// body. Reading email/name off the body previously let anyone mint a session
+// for any address, including an admin's.
 router.post('/google', async (req, res) => {
   try {
-    const { credential, tokenId, email, name, googleId, sub } = req.body;
+    const { credential, tokenId } = req.body;
 
-    if (!email || !name) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    let verified;
+    try {
+      verified = await verifyGoogleCredential(credential || tokenId);
+    } catch (err) {
+      if (err instanceof OAuthError) {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error('Google verification error:', err.message);
+      return res.status(401).json({ message: 'Google sign-in could not be verified.' });
     }
 
-    const userId = googleId || sub || tokenId || credential;
+    const { sub: googleSubject, email, name } = verified;
 
-    // Check if user exists
-    let user = await User.findOne({ 
-      $or: [{ email }, { googleId: userId }] 
+    let user = await User.findOne({
+      $or: [{ email }, { googleId: googleSubject }]
     });
 
     if (user) {
       // Update googleId if not set
-      if (!user.googleId && userId) {
-        user.googleId = userId;
+      if (!user.googleId) {
+        user.googleId = googleSubject;
         await user.save();
       }
     } else {
@@ -132,7 +142,7 @@ router.post('/google', async (req, res) => {
       user = await User.create({
         name,
         email,
-        googleId: userId,
+        googleId: googleSubject,
         password: undefined, // OAuth users don't need password
       });
     }
@@ -165,24 +175,32 @@ router.post('/google', async (req, res) => {
 });
 
 // Facebook OAuth
+// Same rule as /google: only what Facebook's own API returns for the presented
+// access token is trusted. Body-supplied email/name are ignored entirely.
 router.post('/facebook', async (req, res) => {
   try {
-    const { accessToken, email, name, facebookId, userID } = req.body;
+    const { accessToken } = req.body;
 
-    if (!email || !name) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    let verified;
+    try {
+      verified = await verifyFacebookAccessToken(accessToken);
+    } catch (err) {
+      if (err instanceof OAuthError) {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error('Facebook verification error:', err.message);
+      return res.status(401).json({ message: 'Facebook sign-in could not be verified.' });
     }
 
-    const fbId = facebookId || userID;
+    const { id: fbId, email, name } = verified;
 
-    // Check if user exists
-    let user = await User.findOne({ 
-      $or: [{ email }, { facebookId: fbId }] 
+    let user = await User.findOne({
+      $or: [{ email }, { facebookId: fbId }]
     });
 
     if (user) {
       // Update facebookId if not set
-      if (!user.facebookId && fbId) {
+      if (!user.facebookId) {
         user.facebookId = fbId;
         await user.save();
       }

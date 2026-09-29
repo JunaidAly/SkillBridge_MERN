@@ -7,24 +7,12 @@ function GoogleLoginButtonInner({ className, children }) {
 
   const handleGoogleLogin = useGoogleLogin({
     flow: 'implicit',
-    onSuccess: async (tokenResponse) => {
-      try {
-        // Get user info from Google
-        const userInfoResponse = await fetch(
-          `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokenResponse.access_token}`
-        );
-        const userData = await userInfoResponse.json();
-
-        dispatch(loginWithGoogle({
-          credential: tokenResponse.access_token,
-          email: userData.email,
-          name: userData.name,
-          sub: userData.id,
-        }));
-      } catch (error) {
-        console.error('Google login error:', error);
-        dispatch(clearError());
-      }
+    onSuccess: (tokenResponse) => {
+      // Only the raw token goes to the server. It deliberately does NOT send
+      // email/name read from Google here - the backend re-checks this token
+      // with Google and takes the identity from that, so anything we forwarded
+      // would just be an unverified claim.
+      dispatch(loginWithGoogle({ credential: tokenResponse.access_token }));
     },
     onError: (error) => {
       console.error('Google OAuth error:', error);

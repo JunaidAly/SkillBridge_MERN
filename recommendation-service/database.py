@@ -58,6 +58,40 @@ class MongoDB:
             logger.error(f"Error fetching teachers: {e}")
             return []
     
+    async def get_all_students(self) -> List[Dict[str, Any]]:
+        """Fetch all users who have skillsLearning (students)"""
+        try:
+            cursor = self.db.users.find({
+                "skillsLearning": {"$exists": True, "$ne": []}
+            })
+            students = await cursor.to_list(length=None)
+
+            logger.info(f"Found {len(students)} students with skillsLearning")
+            return students
+        except Exception as e:
+            logger.error(f"Error fetching students: {e}")
+            return []
+
+    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch any user by id, with no role filter.
+
+        get_student_by_id/get_teacher_by_id below require the matching skills
+        array to exist, which is wrong for direction-aware lookups - someone
+        asking for students to teach need not have skillsLearning at all.
+        """
+        try:
+            from bson import ObjectId
+            if ObjectId.is_valid(user_id):
+                user = await self.db.users.find_one({"_id": ObjectId(user_id)})
+                if user:
+                    return user
+
+            return await self.db.users.find_one({"_id": user_id})
+        except Exception as e:
+            logger.error(f"Error fetching user {user_id}: {e}")
+            return None
+
     async def get_student_by_id(self, student_id: str) -> Optional[Dict[str, Any]]:
         """Fetch student by ID (users with skillsLearning)"""
         try:
