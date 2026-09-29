@@ -236,7 +236,6 @@ function OnboardingWizard({ profile }) {
   return (
     <div className="fixed inset-0 z-60 bg-light-bg overflow-y-auto">
       <div className="min-h-full flex flex-col">
-        {/* Brand header */}
         <div className="px-4 py-5 lg:px-8 flex items-center justify-between gap-4">
           <img src="/assets/logo.png" alt="SkillBridge" className="h-8" />
           <button
