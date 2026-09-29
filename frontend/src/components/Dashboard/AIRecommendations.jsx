@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
 import { Sparkles, Search, Star, Monitor, MapPin, Clock, Brain, Loader2, AlertCircle, CalendarPlus, BadgeCheck, GraduationCap, BookOpen } from "lucide-react";
@@ -71,23 +71,38 @@ function AIRecommendations() {
   const mySkills = skillNames(profile?.[config.mySkillsField]);
   const hasMySkills = mySkills.length > 0;
 
-  // Open on whichever tab this user can actually act on. Teach-only users would
-  // otherwise land on a permanently empty "Teachers for You".
+  const canLearn = (profile?.skillsLearning || []).length > 0;
+  const canTeach = (profile?.skillsTeaching || []).length > 0;
+
+  // Tabs follow the skills actually on the profile, not what was picked during
+  // onboarding - so adding teaching skills from Edit Profile later makes the
+  // students tab appear on its own, with no other setup.
+  const tabs = useMemo(() => {
+    const available = [
+      ...(canLearn ? ["learn"] : []),
+      ...(canTeach ? ["teach"] : []),
+    ];
+    // With no skills on either side there is nothing to gate on yet, so show
+    // both and let each tab's "add skills" prompt do the guiding.
+    return available.length > 0 ? available : ["learn", "teach"];
+  }, [canLearn, canTeach]);
+
+  // Keep the selection on a tab that still exists - a user who removes their
+  // last learning skill shouldn't be left staring at a tab that's now gone.
+  useEffect(() => {
+    if (!tabs.includes(direction)) setDirection(tabs[0]);
+  }, [tabs, direction]);
+
   useEffect(() => {
     if (hasDefaulted.current || !profile) return;
     hasDefaulted.current = true;
-
-    const canLearn = (profile.skillsLearning || []).length > 0;
-    const canTeach = (profile.skillsTeaching || []).length > 0;
-
-    if (!canLearn && canTeach) setDirection("teach");
 
     // Someone with no skills on a side can still browse "All Users" there.
     setControls((c) => ({
       learn: { ...c.learn, viewMode: canLearn ? "recommended" : "all" },
       teach: { ...c.teach, viewMode: canTeach ? "recommended" : "all" },
     }));
-  }, [profile]);
+  }, [profile, canLearn, canTeach]);
 
   useEffect(() => {
     dispatch(fetchUsers());
@@ -186,7 +201,8 @@ function AIRecommendations() {
 
       {/* Direction tabs */}
       <div className="flex gap-1 border-b border-[#E5E5E5] mb-4">
-        {Object.entries(DIRECTIONS).map(([key, cfg]) => {
+        {tabs.map((key) => {
+          const cfg = DIRECTIONS[key];
           const Icon = key === "learn" ? GraduationCap : BookOpen;
           const isActive = direction === key;
           return (

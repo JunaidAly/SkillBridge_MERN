@@ -39,7 +39,7 @@ class RecommendationEngine:
             logger.info("=" * 50)
             logger.info("Training Content-Based Filtering Model (both directions)")
             logger.info("=" * 50)
-            results['content_based'] = self.content_based_engine.train(teachers_data, students_data)
+            results['content_based'] = await self.content_based_engine.train(teachers_data, students_data)
         else:
             logger.warning("No teacher or student data available for training")
 
@@ -123,11 +123,11 @@ class RecommendationEngine:
         """Load pre-trained corpora from MongoDB."""
         return {'content_based': await self.content_based_engine.load_model()}
 
-    def save_models(self) -> Dict[str, bool]:
-        """Save trained corpora."""
+    async def save_models(self) -> Dict[str, bool]:
+        """Save trained corpora. Awaited so a failed write is visible."""
         results = {}
         if self.content_based_engine.is_trained:
-            results['content_based'] = self.content_based_engine.save_model()
+            results['content_based'] = await self.content_based_engine.save_model()
         return results
 
     def trained_directions(self) -> Dict[str, bool]:

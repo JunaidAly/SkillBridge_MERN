@@ -156,19 +156,24 @@ class ChangeStreamWatcher:
             # Import here to avoid circular dependency
             from database import db
             
-            # Fetch latest data
+            # Fetch latest data. Students are fetched too: train() rebuilds
+            # BOTH matching directions, so omitting them here would wipe the
+            # student corpus on every auto-retrain.
             teachers_data = await db.get_all_teachers()
+            students_data = await db.get_all_students()
             ratings_data = []  # No ratings needed for content-based
             
-            if not teachers_data:
-                logger.warning("⚠️  No teachers found, skipping retrain")
+            if not teachers_data and not students_data:
+                logger.warning("⚠️  No teachers or students found, skipping retrain")
                 return
                 
-            # Train models (this happens in background)
-            results = await self.recommendation_engine.train(ratings_data, teachers_data)
+            results = await self.recommendation_engine.train(ratings_data, teachers_data, students_data)
             
             if results.get('content_based'):
-                logger.info(f"✅ Auto-retrain successful: {len(teachers_data)} teachers")
+                logger.info(
+                    f"✅ Auto-retrain successful: {len(teachers_data)} teachers, "
+                    f"{len(students_data)} students"
+                )
             else:
                 logger.warning("⚠️  Auto-retrain completed but model may not be trained")
                 

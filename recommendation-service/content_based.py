@@ -188,9 +188,12 @@ class ContentBasedEngine:
     # Public API
     # ------------------------------------------------------------------ #
 
-    def train(self, teachers_data: List[Dict], students_data: Optional[List[Dict]] = None) -> bool:
+    async def train(self, teachers_data: List[Dict], students_data: Optional[List[Dict]] = None) -> bool:
         """
         Build both corpora. Succeeds if at least one direction is usable.
+
+        Raises RuntimeError if the trained model cannot be persisted - see
+        save_model below for why that is not swallowed.
         """
         try:
             students_data = students_data or []
@@ -212,16 +215,25 @@ class ContentBasedEngine:
                 else:
                     logger.warning(f"⚠️  No data to train the '{direction}' corpus")
 
-            if not self.is_trained:
-                logger.warning("No corpus could be trained")
-                return False
-
-            self.save_model()
-            return True
-
         except Exception as e:
             logger.error(f"❌ Error training content-based model: {e}")
             return False
+
+        if not self.is_trained:
+            logger.warning("No corpus could be trained")
+            return False
+
+        # Deliberately outside the try above: a persistence failure must not be
+        # reported as a successful train. The caller turns this into a failed
+        # /train response rather than leaving the next restart to quietly load
+        # a stale model.
+        if not await self.save_model():
+            raise RuntimeError(
+                "Model trained but could not be saved to MongoDB - the next "
+                "restart would load a stale model. Check the service logs."
+            )
+
+        return True
 
     @property
     def is_trained(self) -> bool:
@@ -314,36 +326,54 @@ class ContentBasedEngine:
     # Persistence
     # ------------------------------------------------------------------ #
 
-    def save_model(self):
-        """Save both corpora to MongoDB."""
-        try:
-            import asyncio
+    async def save_model(self) -> bool:
+        """
+        Persist every trained corpus. Returns False if any write failed.
 
-            for direction in DIRECTIONS:
-                corpus = self.corpora.get(direction)
-                if not corpus:
-                    continue
+        These writes are awaited rather than fired off as background tasks: a
+        silent failure here (disk, permissions, a dropped Mongo connection)
+        would leave the in-memory model working while the stored copy went
+        stale or missing, and nobody would find out until a restart loaded the
+        old model. model_storage.save_model swallows its own exceptions and
+        reports a bool, so the result has to be checked explicitly.
+        """
+        all_saved = True
 
-                asyncio.create_task(model_storage.save_model(
-                    f'tfidf_vectorizer_{direction}',
-                    corpus['vectorizer'],
-                    {'type': 'TfidfVectorizer', 'users_count': len(corpus['ids'])},
-                ))
-                asyncio.create_task(model_storage.save_model(
-                    f'features_{direction}',
-                    corpus['matrix'],
-                    {'shape': corpus['matrix'].shape},
-                ))
-                asyncio.create_task(model_storage.save_model(
-                    f'metadata_{direction}',
-                    {'ids': corpus['ids'], 'data': corpus['data']},
-                    {'users_count': len(corpus['ids'])},
-                ))
+        for direction in DIRECTIONS:
+            corpus = self.corpora.get(direction)
+            if not corpus:
+                continue
 
-            logger.info("✅ Content-based models saved to MongoDB")
+            try:
+                written = [
+                    await model_storage.save_model(
+                        f'tfidf_vectorizer_{direction}',
+                        corpus['vectorizer'],
+                        {'type': 'TfidfVectorizer', 'users_count': len(corpus['ids'])},
+                    ),
+                    await model_storage.save_model(
+                        f'features_{direction}',
+                        corpus['matrix'],
+                        {'shape': corpus['matrix'].shape},
+                    ),
+                    await model_storage.save_model(
+                        f'metadata_{direction}',
+                        {'ids': corpus['ids'], 'data': corpus['data']},
+                        {'users_count': len(corpus['ids'])},
+                    ),
+                ]
+            except Exception as e:
+                logger.error(f"❌ Error saving the '{direction}' corpus: {e}")
+                all_saved = False
+                continue
 
-        except Exception as e:
-            logger.error(f"Error saving content-based model: {e}")
+            if all(written):
+                logger.info(f"✅ Saved the '{direction}' corpus to MongoDB")
+            else:
+                logger.error(f"❌ Failed to persist the '{direction}' corpus")
+                all_saved = False
+
+        return all_saved
 
     async def load_model(self) -> bool:
         """Load whichever corpora are present in MongoDB."""
