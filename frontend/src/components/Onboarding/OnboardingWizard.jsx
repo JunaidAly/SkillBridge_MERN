@@ -248,7 +248,7 @@ function OnboardingWizard({ profile }) {
           </button>
         </div>
 
-        {/* Step tracker */}
+       
         <div className="px-4 lg:px-8">
           <div className="max-w-4xl mx-auto overflow-x-auto">
             <div className="flex items-stretch min-w-max sm:min-w-0 bg-white border border-[#E5E5E5] rounded-xl overflow-hidden">
