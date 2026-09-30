@@ -47,6 +47,16 @@ services:
         sync: false # Set this manually in Render dashboard
       - key: EMAIL_PASS
         sync: false # Set this manually in Render dashboard
+      # OAuth. The backend verifies Google/Facebook tokens against these and
+      # REFUSES the login (503) when they are missing - it will not fall back to
+      # trusting the email/name in the request body. Without GOOGLE_CLIENT_ID
+      # set here, "Continue with Google" fails in production.
+      - key: GOOGLE_CLIENT_ID
+        sync: false # Must be the SAME value as the frontend's VITE_GOOGLE_CLIENT_ID
+      - key: FACEBOOK_APP_ID
+        sync: false # Optional - Facebook login stays disabled until both are set
+      - key: FACEBOOK_APP_SECRET
+        sync: false # Required to confirm a token was issued for THIS app
 
   # Recommendation Service (Python/FastAPI)
   - type: web

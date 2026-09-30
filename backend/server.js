@@ -67,6 +67,13 @@ app.use(cors({
   ],
   credentials: true
 }));
+// Safepay signs its webhooks as an HMAC over the RAW body, so those bytes must
+// survive untouched. This has to be mounted BEFORE express.json(), which would
+// otherwise consume the stream and leave only a parsed object - re-serialising
+// that would reorder keys and break the digest. express.json() then skips the
+// body it finds already parsed here.
+app.use('/api/payments/safepay-webhook', express.raw({ type: '*/*' }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

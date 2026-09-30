@@ -17,7 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@sfpy/node-sdk": "^3.0.2",
+    "@sfpy/node-core": "^0.3.5",
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.3",

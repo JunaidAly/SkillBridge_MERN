@@ -15,9 +15,9 @@ const router = express.Router();
 // Public - lets the frontend list packages without hardcoding pack ids/amounts.
 router.get('/packages', getPackages);
 
-// Public - called by Safepay, not a logged-in user. Needs the normal
-// JSON-parsed body (safepay.verify.webhook reads req.body.data) - no special
-// raw-body-parser mount needed for this route.
+// Public - called by Safepay, not a logged-in user. Its signature is an HMAC
+// over the RAW body, so server.js mounts express.raw() for this exact path
+// ahead of the global JSON parser; req.body arrives here as a Buffer.
 router.post('/safepay-webhook', handleWebhook);
 
 // JWT-protected

@@ -1,4 +1,9 @@
-import safepay, { fetchV1TrackerStatus } from '../config/safepay.js';
+import {
+  createHostedCheckoutUrl,
+  createPaymentSession,
+  fetchTrackerStatus,
+  verifyWebhookSignature,
+} from '../config/safepay.js';
 import { getPack, listPackages } from '../config/creditPacks.js';
 import Transaction from '../models/Transaction.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
@@ -115,36 +120,61 @@ async function finalizeFailedTransaction(transaction, rawPayload) {
   await transaction.save();
 }
 
-// Safepay's v1 redirect does NOT include a `sig` (confirmed live - a real
-// completed payment's redirect only carried `order_id` + `tracker`), so
-// there's no way to verify the callback locally. Instead we treat the
-// tracker as a lookup key and ask Safepay directly what its real status is,
-// via the confirmed-working GET /order/v1/{tracker} endpoint. This is the
-// single source of truth used by both the redirect-confirm call and the
-// polling endpoint below.
+// The redirect back from Safepay carries no signature, so it can't be trusted
+// on its own. The tracker in it is treated purely as a lookup key and the real
+// status is read from Safepay's reporter API - the single source of truth used
+// by the redirect-confirm call, the polling endpoint and the webhook alike.
+//
+// Confirmed live against @sfpy/node-core: the state sits at `data.state`, NOT
+// `data.tracker.state` as Safepay's docs suggest.
 async function checkAndFinalizeTracker(transaction) {
   if (transaction.status !== 'pending') return transaction;
   if (!transaction.safepayTrackerToken) return transaction;
 
-  const data = await fetchV1TrackerStatus(transaction.safepayTrackerToken);
+  const data = await fetchTrackerStatus(transaction.safepayTrackerToken);
   if (!data) return transaction;
 
-  if (data.state === 'TRACKER_ENDED' && data.transaction) {
+  if (data.state !== 'TRACKER_ENDED') {
+    // Anything else is still in flight (TRACKER_STARTED, mid-3DS, ...).
+    // Unknown states are logged rather than guessed at, so a new one shows up
+    // in the logs instead of silently failing someone's payment.
+    if (data.state !== 'TRACKER_STARTED') {
+      console.warn(`Safepay tracker ${transaction.safepayTrackerToken} in unhandled state: ${data.state}`);
+    }
+    return transaction;
+  }
+
+  // Ended. `purchase_totals` is NOT proof of payment - it is present on a
+  // brand-new unpaid tracker too (confirmed live), so it must not be used as
+  // the success signal.
+  //
+  // The exact marker a settled payment carries could not be confirmed: the V2
+  // reporter shows none of our historical V1 payments, so no completed tracker
+  // existed to inspect. Rather than guess and risk crediting a cancelled
+  // payment, an ended tracker with no recognised success marker is logged in
+  // full and left pending for a human to settle.
+  const successMarker = data.transaction || data.charge || data.payment
+    || (Array.isArray(data.payments) && data.payments.length > 0 ? data.payments : null);
+
+  if (successMarker) {
     await finalizeCompletedTransaction(
       transaction,
-      { via: 'v1_tracker_status', data },
-      data.transaction.reference || transaction.safepayTrackerToken
+      { via: 'reporter_tracker_status', data },
+      transaction.safepayTrackerToken
     );
-    return Transaction.findById(transaction._id);
+  } else if (data.is_routed === false) {
+    // Ended without ever reaching a processor - nothing was charged.
+    await finalizeFailedTransaction(transaction, { via: 'reporter_tracker_status', data });
+  } else {
+    console.error(
+      `Safepay tracker ${transaction.safepayTrackerToken} ENDED with an unrecognised shape - ` +
+      'left pending, settle manually and update the success check. Payload: ' +
+      JSON.stringify(data)
+    );
+    return transaction;
   }
 
-  if (data.state === 'TRACKER_ENDED' && !data.transaction) {
-    // Tracker finished without a successful transaction attached - failed/cancelled.
-    await finalizeFailedTransaction(transaction, { via: 'v1_tracker_status', data });
-    return Transaction.findById(transaction._id);
-  }
-
-  return transaction; // still in progress
+  return Transaction.findById(transaction._id);
 }
 
 // Get a single transaction's status - polled by the /credits/success page.
@@ -260,39 +290,30 @@ export const createCheckout = async (req, res) => {
     });
 
     try {
-      // v1 tracker (SDK -> /order/v1/init). Payments 2.0's /order/payments/v3/
-      // was tried here and its tokens are rejected by the hosted checkout page
-      // with "Tracker is in an invalid state" - see config/safepay.js.
+      // V2 Express Checkout. Two steps, both confirmed live:
+      //   1. payments.session.setup -> tracker token
+      //   2. client.passport.create + local URL assembly -> hosted checkout URL
       // `amount` is the MAJOR unit (plain rupees), not paisas: sending
-      // amountPKR * 100 for a Rs 500 pack produced a real Rs 50,000 charge.
-      const { token } = await safepay.payments.create({
-        amount: pack.amountPKR,
-        currency: 'PKR',
+      // amountPKR * 100 for a Rs 500 pack once produced a real Rs 50,000 charge.
+      const tracker = await createPaymentSession({
+        amountPKR: pack.amountPKR,
+        orderId: transaction._id.toString(),
       });
 
-      transaction.safepayTrackerToken = token;
+      transaction.safepayTrackerToken = tracker;
       await transaction.save();
 
       const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 
-      // checkout.create() is synchronous and returns the URL string directly
-      // (not wrapped in an object) - confirmed against the installed SDK source.
-      //
-      // redirectUrl deliberately carries NO query string of its own. Safepay
-      // appends its own callback params (order_id, tracker, sig) by simple
-      // concatenation - if our URL already had a `?...`, theirs lands as a
-      // second `?` instead of `&`, producing a malformed URL where
-      // `transactionId` and their `order_id` run together into one garbled
-      // value (confirmed live: "<id>?order_id=<id>"). Since `order_id` is
-      // just an echo of the `orderId` we pass below (our own transaction id),
-      // the frontend reads THAT instead of needing a query param of its own.
-      const checkoutUrl = safepay.checkout.create({
-        token,
+      // redirectUrl deliberately carries no query string of its own - Safepay
+      // appends its own params, and a pre-existing `?` turned the result into
+      // one garbled value last time. Our transaction id rides along as
+      // `order_id` instead (both in the session metadata and on this URL).
+      const checkoutUrl = await createHostedCheckoutUrl({
+        tracker,
         orderId: transaction._id.toString(),
-        cancelUrl: `${frontendUrl}/credits/cancelled`,
         redirectUrl: `${frontendUrl}/credits/success`,
-        source: 'custom',
-        webhooks: true,
+        cancelUrl: `${frontendUrl}/credits/cancelled`,
       });
 
       res.json({
@@ -317,19 +338,44 @@ export const createCheckout = async (req, res) => {
   }
 };
 
-// Best-effort - webhooks are not the primary confirmation path (the redirect
-// confirm + polling above, both backed by the confirmed-working GET
-// /order/v1/{tracker} lookup, are). This just uses the webhook as an early
-// trigger: whatever tracker token it names, re-check that tracker's real
-// status via the same source of truth rather than trusting the webhook
-// payload's own shape (which hasn't been confirmed against the v1 flow).
+// Webhooks are a secondary trigger - the redirect-confirm and polling paths
+// above already resolve every payment through the reporter API. This verifies
+// the signature, then re-checks the named tracker against that same source of
+// truth rather than trusting the payload's own shape.
+//
+// Signature: X-SFPY-SIGNATURE is an HMAC-SHA512 of the RAW body. The route
+// mounts express.raw() so req.body is a Buffer here - re-serialising parsed
+// JSON would reorder keys and break the digest. @sfpy/node-core ships no
+// webhook helper, so the HMAC is computed in config/safepay.js.
 export const handleWebhook = async (req, res) => {
   try {
-    const payload = req.body?.data || req.body || {};
-    const trackerToken = payload.token || payload.tracker || req.body?.tracker;
+    const signature = req.get('X-SFPY-SIGNATURE');
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : null;
+
+    if (!rawBody) {
+      console.error('Safepay webhook: raw body missing - check the express.raw() mount');
+      return res.status(400).json({ received: false, message: 'Raw body required' });
+    }
+
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      console.error('Safepay webhook: signature verification failed');
+      return res.status(401).json({ received: false, message: 'Invalid signature' });
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).json({ received: false, message: 'Malformed JSON' });
+    }
+
+    // Tracker token can sit at a few depths depending on the event shape, so
+    // every observed location is checked before giving up.
+    const data = payload?.data || payload || {};
+    const trackerToken = data.tracker?.token || data.token || data.tracker || payload?.tracker;
 
     if (!trackerToken) {
-      console.error('Safepay webhook: no tracker token in payload', JSON.stringify(req.body));
+      console.error('Safepay webhook: no tracker token in payload', JSON.stringify(payload).slice(0, 300));
       return res.status(200).json({ received: true, message: 'No tracker token in payload' });
     }
 
@@ -339,6 +385,8 @@ export const handleWebhook = async (req, res) => {
       return res.status(200).json({ received: true, message: 'Unknown tracker token' });
     }
 
+    // Same atomic finalize as every other path, so a webhook racing the
+    // redirect-confirm cannot double-credit.
     await checkAndFinalizeTracker(transaction);
 
     return res.status(200).json({ received: true });
