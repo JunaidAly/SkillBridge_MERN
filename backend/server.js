@@ -77,8 +77,10 @@ app.use('/api/payments/safepay-webhook', express.raw({ type: '*/*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection
-connectDB();
+// Database connection is established before the server starts listening - see
+// the await below. Starting to serve requests first meant any query that
+// arrived during a slow connect buffered until it timed out and crashed the
+// process.
 
 // Routes
 app.get('/', (req, res) => {
@@ -233,6 +235,10 @@ app.use((req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+
+// Top-level await (ESM): nothing is served, and no scheduled job runs, until
+// the database is actually reachable.
+await connectDB();
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

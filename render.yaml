@@ -24,6 +24,12 @@ services:
         value: 5000
       - key: MONGODB_URI
         sync: false # Set this manually in Render dashboard for security
+      # Base URL the payment provider redirects the buyer back to. Must be the
+      # LIVE custom domain (https://www.skill-bridge.me) - a per-deployment
+      # Vercel preview URL dies on the next deploy and the post-payment
+      # redirect then lands on a 404.
+      - key: FRONTEND_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true # Render will auto-generate a secure secret
       - key: RECOMMENDATION_SERVICE_URL
