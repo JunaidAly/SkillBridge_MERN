@@ -184,10 +184,15 @@ export const removeCertification = createAsyncThunk(
 // Submit teacher verification documents
 export const submitVerification = createAsyncThunk(
   'profile/submitVerification',
-  async (files, { rejectWithValue }) => {
+  // `entries` is [{ file, docType }] - docTypes are appended in the same order
+  // as the files so the backend can pair them up index by index.
+  async (entries, { rejectWithValue }) => {
     try {
       const formData = new FormData();
-      files.forEach((file) => formData.append('docs', file));
+      entries.forEach(({ file, docType }) => {
+        formData.append('docs', file);
+        formData.append('docTypes', docType);
+      });
       const res = await apiClient.post('/verification/submit', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -248,6 +253,14 @@ const profileSlice = createSlice({
     clearProfileError: (state) => {
       state.error = null;
       state.updateError = null;
+    },
+    // Applied from the live `verificationReviewed` socket event so the badge
+    // flips the moment an admin decides, with no refetch.
+    setVerificationStatus: (state, action) => {
+      if (!state.profile) return;
+      state.profile.verificationStatus = action.payload.verificationStatus;
+      state.profile.verificationRejectionReason = action.payload.verificationRejectionReason || undefined;
+      state.profile.verificationReviewedAt = action.payload.verificationReviewedAt;
     },
     clearProfile: (state) => {
       state.profile = null;
@@ -398,5 +411,5 @@ const profileSlice = createSlice({
   },
 });
 
-export const { clearProfileError, clearProfile } = profileSlice.actions;
+export const { clearProfileError, clearProfile, setVerificationStatus } = profileSlice.actions;
 export default profileSlice.reducer;

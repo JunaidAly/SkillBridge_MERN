@@ -59,3 +59,42 @@ export async function notifyUser({ userId, type, title, body, link, sendEmail = 
     return null;
   }
 }
+
+/**
+ * Pushes a bare socket event to one user's personal room. Like emitToAdmins,
+ * this is for live screen updates only and records nothing.
+ */
+export function emitToUser(userId, event, payload) {
+  try {
+    ioInstance?.to(`user:${userId}`).emit(event, payload);
+  } catch (err) {
+    console.error('emitToUser: socket emit failed:', err.message);
+  }
+}
+
+/**
+ * Pushes a bare socket event into the shared `admins` room. Use this for live
+ * screen updates (a list gaining a row); it creates no Notification record.
+ */
+export function emitToAdmins(event, payload) {
+  try {
+    ioInstance?.to('admins').emit(event, payload);
+  } catch (err) {
+    console.error('emitToAdmins: socket emit failed:', err.message);
+  }
+}
+
+/**
+ * Notifies every admin individually, so the bell and its unread count work the
+ * same as any other notification. Like notifyUser, this never throws.
+ */
+export async function notifyAdmins({ type, title, body, link }) {
+  try {
+    const admins = await User.find({ role: 'admin' }).select('_id');
+    await Promise.all(
+      admins.map((admin) => notifyUser({ userId: admin._id.toString(), type, title, body, link }))
+    );
+  } catch (err) {
+    console.error('notifyAdmins: failed:', err.message);
+  }
+}

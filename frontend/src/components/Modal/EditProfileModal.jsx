@@ -3,6 +3,9 @@ import { useDispatch, useSelector } from "react-redux";
 import { X, Camera, Loader2, Search, Check } from "lucide-react";
 import Button from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
+import { availableLanguages, timezones, certificationSuggestions } from "../../utils/profileOptions";
+import { skillSuggestions } from "../../utils/skillSuggestions";
+import Combobox from "../../ui/Combobox";
 import {
   updateProfile,
   uploadAvatar,
@@ -15,80 +18,8 @@ import {
 } from "../../store/profileSlice";
 
 // Skill suggestions list
-const skillSuggestions = [
-  "React Development",
-  "JavaScript",
-  "TypeScript",
-  "Node.js",
-  "Python",
-  "Machine Learning",
-  "Data Science",
-  "UI/UX Design",
-  "Graphic Design",
-  "Digital Marketing",
-  "Social Media Marketing",
-  "Content Writing",
-  "SEO",
-  "AWS",
-  "DevOps",
-  "Docker",
-  "Kubernetes",
-  "MongoDB",
-  "PostgreSQL",
-  "Java",
-  "C++",
-  "Go",
-  "Rust",
-  "Swift",
-  "iOS Development",
-  "Android Development",
-  "Flutter",
-  "React Native",
-  "Vue.js",
-  "Angular",
-  "PHP",
-  "Laravel",
-  "Django",
-  "FastAPI",
-  "GraphQL",
-  "REST API",
-  "Blockchain",
-  "Web3",
-  "Solidity",
-  "Cybersecurity",
-  "Network Security",
-  "Cloud Computing",
-  "Azure",
-  "Google Cloud",
-  "Linux",
-  "Git",
-  "Agile",
-  "Scrum",
-  "Project Management",
-  "Product Management",
-];
 
 // Certification suggestions list
-const certificationSuggestions = [
-  "AWS Solutions Architect",
-  "AWS Developer Associate",
-  "AWS Cloud Practitioner",
-  "Google Cloud Professional",
-  "Google UI/UX Design",
-  "Google Data Analytics",
-  "Microsoft Azure Administrator",
-  "Cisco CCNA",
-  "CompTIA Security+",
-  "CompTIA Network+",
-  "PMP Certification",
-  "Scrum Master",
-  "Kubernetes Administrator",
-  "Docker Certified Associate",
-  "Meta Frontend Developer",
-  "IBM Data Science",
-  "Salesforce Administrator",
-  "Oracle Java Certification",
-];
 
 function EditProfileModal({ isOpen, onClose, user }) {
   const dispatch = useDispatch();
@@ -116,23 +47,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
   const [teachingSearch, setTeachingSearch] = useState("");
   const [learningSearch, setLearningSearch] = useState("");
   const [certificationSearch, setCertificationSearch] = useState("");
-
-  // Suggestions state
-  const [teachingSuggestions, setTeachingSuggestions] = useState([]);
-  const [learningSuggestions, setLearningSuggestions] = useState([]);
-  const [certSuggestions, setCertSuggestions] = useState([]);
-
-  const availableLanguages = ["Urdu", "English", "Arabic", "Spanish", "French", "German", "Chinese"];
-  const timezones = [
-    "PST (GMT-8)",
-    "MST (GMT-7)",
-    "CST (GMT-6)",
-    "EST (GMT-5)",
-    "GMT (GMT+0)",
-    "CET (GMT+1)",
-    "IST (GMT+5:30)",
-    "PKT (GMT+5)",
-  ];
 
   // Initialize form only when modal opens, not when user changes
   useEffect(() => {
@@ -173,48 +87,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
     };
   }, [isOpen]);
 
-  // Filter teaching skill suggestions
-  useEffect(() => {
-    if (teachingSearch.trim()) {
-      const filtered = skillSuggestions.filter(
-        (skill) =>
-          skill.toLowerCase().includes(teachingSearch.toLowerCase()) &&
-          !skillsTeaching.some((s) => s.name?.toLowerCase() === skill.toLowerCase())
-      );
-      setTeachingSuggestions(filtered.slice(0, 6));
-    } else {
-      setTeachingSuggestions([]);
-    }
-  }, [teachingSearch, skillsTeaching]);
-
-  // Filter learning skill suggestions
-  useEffect(() => {
-    if (learningSearch.trim()) {
-      const filtered = skillSuggestions.filter(
-        (skill) =>
-          skill.toLowerCase().includes(learningSearch.toLowerCase()) &&
-          !skillsLearning.some((s) => s.name?.toLowerCase() === skill.toLowerCase())
-      );
-      setLearningSuggestions(filtered.slice(0, 6));
-    } else {
-      setLearningSuggestions([]);
-    }
-  }, [learningSearch, skillsLearning]);
-
-  // Filter certification suggestions
-  useEffect(() => {
-    if (certificationSearch.trim()) {
-      const filtered = certificationSuggestions.filter(
-        (cert) =>
-          cert.toLowerCase().includes(certificationSearch.toLowerCase()) &&
-          !certifications.some((c) => c.name?.toLowerCase() === cert.toLowerCase())
-      );
-      setCertSuggestions(filtered.slice(0, 6));
-    } else {
-      setCertSuggestions([]);
-    }
-  }, [certificationSearch, certifications]);
-
   const handleClose = () => {
     setIsClosing(true);
     setTimeout(() => {
@@ -249,10 +121,9 @@ function EditProfileModal({ isOpen, onClose, user }) {
   };
 
   // Skills handlers
-  const handleAddTeachingSkill = async (e) => {
-    if (e.key === "Enter" && teachingSearch.trim()) {
-      e.preventDefault();
-      const skillName = teachingSearch.trim();
+  const handleAddTeachingSkill = async (name) => {
+    const skillName = (name ?? teachingSearch).trim();
+    if (skillName) {
       const exists = skillsTeaching.some(
         (s) => s.name?.toLowerCase() === skillName.toLowerCase()
       );
@@ -267,7 +138,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
         }
       }
       setTeachingSearch("");
-      setTeachingSuggestions([]);
     }
   };
 
@@ -282,10 +152,9 @@ function EditProfileModal({ isOpen, onClose, user }) {
     }
   };
 
-  const handleAddLearningSkill = async (e) => {
-    if (e.key === "Enter" && learningSearch.trim()) {
-      e.preventDefault();
-      const skillName = learningSearch.trim();
+  const handleAddLearningSkill = async (name) => {
+    const skillName = (name ?? learningSearch).trim();
+    if (skillName) {
       if (
         !skillsLearning.some(
           (s) => s.name?.toLowerCase() === skillName.toLowerCase()
@@ -301,7 +170,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
         }
       }
       setLearningSearch("");
-      setLearningSuggestions([]);
     }
   };
 
@@ -316,10 +184,9 @@ function EditProfileModal({ isOpen, onClose, user }) {
     }
   };
 
-  const handleAddCertification = async (e) => {
-    if (e.key === "Enter" && certificationSearch.trim()) {
-      e.preventDefault();
-      const certName = certificationSearch.trim();
+  const handleAddCertification = async (name) => {
+    const certName = (name ?? certificationSearch).trim();
+    if (certName) {
       const exists = certifications.some(
         (c) => c.name?.toLowerCase() === certName.toLowerCase()
       );
@@ -334,7 +201,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
         }
       }
       setCertificationSearch("");
-      setCertSuggestions([]);
     }
   };
 
@@ -349,45 +215,6 @@ function EditProfileModal({ isOpen, onClose, user }) {
     }
   };
 
-  // Handle suggestion clicks
-  const handleTeachingSuggestionClick = async (suggestion) => {
-    try {
-      const updatedSkills = await dispatch(addTeachingSkill(suggestion)).unwrap();
-      setSkillsTeaching(updatedSkills);
-      setTeachingSearch(""); // Clear immediately
-      setTeachingSuggestions([]); // Clear suggestions
-      showSuccess("Teaching skill added successfully!");
-    } catch (error) {
-      console.error("Failed to add teaching skill:", error);
-      showError(error.message || "Failed to add teaching skill");
-    }
-  };
-
-  const handleLearningSuggestionClick = async (suggestion) => {
-    try {
-      const updatedSkills = await dispatch(addLearningSkill(suggestion)).unwrap();
-      setSkillsLearning(updatedSkills);
-      setLearningSearch(""); // Clear immediately
-      setLearningSuggestions([]); // Clear suggestions
-      showSuccess("Learning skill added successfully!");
-    } catch (error) {
-      console.error("Failed to add learning skill:", error);
-      showError(error.message || "Failed to add learning skill");
-    }
-  };
-
-  const handleCertSuggestionClick = async (suggestion) => {
-    try {
-      const updatedCerts = await dispatch(addCertification({ name: suggestion })).unwrap();
-      setCertifications(updatedCerts);
-      setCertificationSearch(""); // Clear immediately
-      setCertSuggestions([]); // Clear suggestions
-      showSuccess("Certification added successfully!");
-    } catch (error) {
-      console.error("Failed to add certification:", error);
-      showError(error.message || "Failed to add certification");
-    }
-  };
 
   const handleSave = async () => {
     try {
@@ -569,35 +396,20 @@ function EditProfileModal({ isOpen, onClose, user }) {
             <label className="font-family-poppins text-sm font-bold text-black block mb-3">
               Skills I Teach
             </label>
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={16} />
-              <input
-                type="text"
+            <div className="mb-3 max-w-md">
+              <Combobox
                 value={teachingSearch}
-                onChange={(e) => setTeachingSearch(e.target.value)}
-                onKeyDown={handleAddTeachingSkill}
-                placeholder="Search skills..."
-                className="w-full max-w-md pl-10 pr-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+                onChange={setTeachingSearch}
+                options={skillSuggestions}
+                exclude={skillsTeaching.map((x) => x.name || x)}
+                placeholder="Search..."
+                aria-label="Skills I Teach"
+                leadingIcon={<Search size={16} />}
+                inputClassName="py-2.5"
+                listClassName="z-60"
+                onSelect={(v) => handleAddTeachingSkill(v)}
+                onSubmit={() => handleAddTeachingSkill()}
               />
-              {/* Suggestions Dropdown */}
-              {teachingSuggestions.length > 0 && (
-                <div className="absolute top-full max-w-md left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-60 max-h-32 overflow-y-auto">
-                  {teachingSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleTeachingSuggestionClick(suggestion);
-                      }}
-                      className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {skillsTeaching.map((skill) => (
@@ -643,35 +455,20 @@ function EditProfileModal({ isOpen, onClose, user }) {
             <label className="font-family-poppins text-sm font-bold text-black block mb-3">
               Skills I'm Learning
             </label>
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={16} />
-              <input
-                type="text"
+            <div className="mb-3 max-w-md">
+              <Combobox
                 value={learningSearch}
-                onChange={(e) => setLearningSearch(e.target.value)}
-                onKeyDown={handleAddLearningSkill}
-                placeholder="Search skills..."
-                className="w-full max-w-md pl-10 pr-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+                onChange={setLearningSearch}
+                options={skillSuggestions}
+                exclude={skillsLearning.map((x) => x.name || x)}
+                placeholder="Search..."
+                aria-label="Skills I Want to Learn"
+                leadingIcon={<Search size={16} />}
+                inputClassName="py-2.5"
+                listClassName="z-60"
+                onSelect={(v) => handleAddLearningSkill(v)}
+                onSubmit={() => handleAddLearningSkill()}
               />
-              {/* Suggestions Dropdown */}
-              {learningSuggestions.length > 0 && (
-                <div className="absolute  max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-60 max-h-32 overflow-y-auto">
-                  {learningSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleLearningSuggestionClick(suggestion);
-                      }}
-                      className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {skillsLearning.map((skill) => (
@@ -701,35 +498,20 @@ function EditProfileModal({ isOpen, onClose, user }) {
             <label className="font-family-poppins text-sm font-bold text-black block mb-3">
               Certifications
             </label>
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray" size={16} />
-              <input
-                type="text"
+            <div className="mb-3 max-w-md">
+              <Combobox
                 value={certificationSearch}
-                onChange={(e) => setCertificationSearch(e.target.value)}
-                onKeyDown={handleAddCertification}
-                placeholder="Search certifications..."
-                className="w-full max-w-md pl-10 pr-4 py-2.5 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+                onChange={setCertificationSearch}
+                options={certificationSuggestions}
+                exclude={certifications.map((x) => x.name || x)}
+                placeholder="Search..."
+                aria-label="Certifications"
+                leadingIcon={<Search size={16} />}
+                inputClassName="py-2.5"
+                listClassName="z-60"
+                onSelect={(v) => handleAddCertification(v)}
+                onSubmit={() => handleAddCertification()}
               />
-              {/* Suggestions Dropdown */}
-              {certSuggestions.length > 0 && (
-                <div className="absolute max-w-md top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-60 max-h-32 overflow-y-auto">
-                  {certSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleCertSuggestionClick(suggestion);
-                      }}
-                      className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {certifications.map((cert) => (

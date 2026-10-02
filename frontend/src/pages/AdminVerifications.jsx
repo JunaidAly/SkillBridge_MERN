@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { FileText, Check, X } from "lucide-react";
 import apiClient from "../api/client";
 import Pagination from "../ui/Pagination";
+import DocumentViewer from "../ui/DocumentViewer";
+import { getSocket } from "../socket";
+import { docTypeLabel } from "../utils/verificationDocTypes";
 import { useToast } from "../ui/Toast";
 
 const formatDate = (dateString) =>
@@ -10,6 +13,8 @@ const formatDate = (dateString) =>
     : "-";
 
 function AdminVerifications() {
+  // { url, title } of the document currently being reviewed in-app
+  const [previewDoc, setPreviewDoc] = useState(null);
   const { success, error: showError } = useToast();
 
   const [users, setUsers] = useState([]);
@@ -44,6 +49,31 @@ function AdminVerifications() {
       cancelled = true;
     };
   }, [page]);
+
+  // Live updates so an admin sitting on this screen sees a new request appear,
+  // and a request another admin just handled disappear, without refreshing.
+  useEffect(() => {
+    const socket = getSocket();
+
+    const onSubmitted = ({ user }) => {
+      if (!user) return;
+      setUsers((prev) =>
+        // Re-submissions replace the existing row instead of duplicating it.
+        [user, ...prev.filter((u) => u.id !== user.id)]
+      );
+    };
+
+    const onReviewed = ({ userId }) => {
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+    };
+
+    socket.on("verificationSubmitted", onSubmitted);
+    socket.on("verificationReviewed", onReviewed);
+    return () => {
+      socket.off("verificationSubmitted", onSubmitted);
+      socket.off("verificationReviewed", onReviewed);
+    };
+  }, []);
 
   const removeFromList = (userId) => {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -132,18 +162,30 @@ function AdminVerifications() {
                         </p>
                       )}
                       <div className="flex flex-wrap gap-2 mt-3">
-                        {(u.verificationDocs || []).map((url, i) => (
-                          <a
-                            key={url}
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1 text-xs text-teal border border-teal/30 rounded-lg px-2.5 py-1.5 hover:bg-teal/5"
-                          >
-                            <FileText size={12} />
-                            Document {i + 1}
-                          </a>
-                        ))}
+                        {(u.verificationDocs || []).map((doc, i) => {
+                          // Older records stored a bare URL string; newer ones
+                          // carry the type the teacher picked.
+                          const url = typeof doc === "string" ? doc : doc.url;
+                          const label =
+                            typeof doc === "string" ? `Document ${i + 1}` : docTypeLabel(doc.docType);
+                          return (
+                            <button
+                              key={url}
+                              type="button"
+                              onClick={() =>
+                                setPreviewDoc({
+                                  url,
+                                  title: `${u.name} — ${label}`,
+                                  fileName: typeof doc === "string" ? "" : doc.fileName,
+                                })
+                              }
+                              className="flex items-center gap-1 text-xs text-teal border border-teal/30 rounded-lg px-2.5 py-1.5 hover:bg-teal/5 transition-all"
+                            >
+                              <FileText size={12} />
+                              {label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -198,6 +240,14 @@ function AdminVerifications() {
           </>
         )}
       </div>
+
+      <DocumentViewer
+        isOpen={Boolean(previewDoc)}
+        onClose={() => setPreviewDoc(null)}
+        url={previewDoc?.url}
+        title={previewDoc?.title}
+        fileName={previewDoc?.fileName}
+      />
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { MapPin, Globe, Clock, Star, ArrowLeft, Award, Loader2, Monitor, FileText, BadgeCheck } from "lucide-react";
+import { MapPin, Globe, Clock, Star, ArrowLeft, Award, Loader2, Monitor, FileText, BadgeCheck, Eye } from "lucide-react";
 import Button from "../ui/Button";
+import DocumentViewer from "../ui/DocumentViewer";
 import apiClient from "../api/client";
 import { createConversation } from "../store/chatSlice";
 import { downloadBlob } from "../utils/downloadBlob";
@@ -13,6 +14,7 @@ function ViewProfilePage() {
   const dispatch = useDispatch();
   const { loading: chatLoading } = useSelector((state) => state.chat);
   
+  const [previewCert, setPreviewCert] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -329,13 +331,29 @@ function ViewProfilePage() {
                     {cert.issuer} {cert.year && `(${cert.year})`}
                   </p>
                   {cert.fileUrl && (
-                    <button
-                      onClick={() => handleDownloadCertification(cert)}
-                      className="flex items-center gap-1 text-teal text-xs hover:underline mt-1"
-                    >
-                      <FileText size={12} />
-                      Download
-                    </button>
+                    <div className="flex items-center gap-3 mt-1">
+                      <button
+                        onClick={() =>
+                          setPreviewCert({
+                            url: `/users/${id}/certifications/${cert._id}/download?disposition=inline`,
+                            title: cert.name,
+                            fileName: cert.fileName,
+                            mimeType: cert.fileMimeType,
+                          })
+                        }
+                        className="flex items-center gap-1 text-teal text-xs hover:underline"
+                      >
+                        <Eye size={12} />
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleDownloadCertification(cert)}
+                        className="flex items-center gap-1 text-gray text-xs hover:underline"
+                      >
+                        <FileText size={12} />
+                        Download
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -415,6 +433,16 @@ function ViewProfilePage() {
           </div>
         )}
       </div>
+
+      <DocumentViewer
+        isOpen={Boolean(previewCert)}
+        onClose={() => setPreviewCert(null)}
+        url={previewCert?.url}
+        title={previewCert?.title}
+        fileName={previewCert?.fileName}
+        mimeType={previewCert?.mimeType}
+        authenticated
+      />
     </div>
   );
 }

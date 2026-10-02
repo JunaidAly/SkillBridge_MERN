@@ -121,9 +121,12 @@ io.use((socket, next) => {
 
     jwt.verify(token, process.env.JWT_SECRET, async (err, user) => {
       if (err) return next(new Error('Invalid or expired token'));
-      const dbUser = await User.findById(user.userId).select('isSuspended');
+      const dbUser = await User.findById(user.userId).select('isSuspended role');
       if (dbUser?.isSuspended) return next(new Error('Account suspended'));
       socket.user = user;
+      // Needed below to put admins in a shared room - the JWT itself only
+      // carries the user id.
+      socket.userRole = dbUser?.role;
       next();
     });
   } catch (e) {
@@ -143,6 +146,10 @@ io.on('connection', (socket) => {
     if (wasOffline) io.emit('userOnline', { userId: String(userId) });
 
     socket.emit('onlineUsers', { userIds: getOnlineUserIds() });
+
+    // Shared room for moderation events (new verification submissions etc.)
+    // so admin screens can update without polling.
+    if (socket.userRole === 'admin') socket.join('admins');
   }
 
   socket.on('joinConversation', async ({ conversationId }) => {

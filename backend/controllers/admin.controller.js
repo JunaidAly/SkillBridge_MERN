@@ -9,7 +9,7 @@ import Report from '../models/Report.js';
 import SessionDispute from '../models/SessionDispute.js';
 import { processCompletedMeetingCredits } from '../utils/meetingCompletion.js';
 import { logAdminAction } from '../utils/auditLog.js';
-import { notifyUser } from '../utils/notify.js';
+import { notifyUser, emitToUser, emitToAdmins } from '../utils/notify.js';
 import {
   verificationApprovedEmail,
   verificationRejectedEmail,
@@ -341,6 +341,18 @@ export const updateUserRole = async (req, res) => {
       action: 'role_change',
       targetUserId: user._id,
       details: { oldRole, newRole: role },
+    });
+
+    // Live badge/status update on the user's own profile, and remove the row
+    // from every admin's open Verifications list.
+    emitToUser(user._id.toString(), 'verificationReviewed', {
+      verificationStatus: user.verificationStatus,
+      verificationRejectionReason: user.verificationRejectionReason || null,
+      verificationReviewedAt: user.verificationReviewedAt,
+    });
+    emitToAdmins('verificationReviewed', {
+      userId: user._id.toString(),
+      verificationStatus: user.verificationStatus,
     });
 
     res.json({

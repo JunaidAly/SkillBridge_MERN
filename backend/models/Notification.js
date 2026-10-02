@@ -7,7 +7,7 @@ const notificationSchema = new mongoose.Schema({
     required: true,
     enum: [
       'new_message', 'meeting_reminder', 'meeting_confirmed', 'meeting_cancelled',
-      'credit_low_balance', 'verification_approved', 'verification_rejected',
+      'credit_low_balance', 'verification_submitted', 'verification_approved', 'verification_rejected',
       'refund_approved', 'refund_rejected', 'payout_approved', 'payout_rejected', 'payout_paid',
     ],
   },

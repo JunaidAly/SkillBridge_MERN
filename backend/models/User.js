@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { VERIFICATION_DOC_TYPE_VALUES, DEFAULT_VERIFICATION_DOC_TYPE } from '../config/verificationDocTypes.js';
 
 const skillSchema = new mongoose.Schema({
   name: {
@@ -39,6 +40,26 @@ const learningSkillSchema = new mongoose.Schema({
     default: 0,
     min: 0,
     max: 100,
+  },
+});
+
+const verificationDocSchema = new mongoose.Schema({
+  url: {
+    type: String,
+    required: true,
+  },
+  docType: {
+    type: String,
+    enum: VERIFICATION_DOC_TYPE_VALUES,
+    default: DEFAULT_VERIFICATION_DOC_TYPE,
+  },
+  fileName: {
+    type: String,
+    default: '',
+  },
+  uploadedAt: {
+    type: Date,
+    default: Date.now,
   },
 });
 
@@ -124,9 +145,10 @@ const userSchema = new mongoose.Schema(
       enum: ['unverified', 'pending', 'verified', 'rejected'],
       default: 'unverified',
     },
-    verificationDocs: [{
-      type: String,
-    }],
+    // Objects rather than bare URLs so the admin review screen can say what
+    // each file is meant to be (see config/verificationDocTypes.js). Older
+    // string entries were converted by scripts/migrateVerificationDocs.js.
+    verificationDocs: [verificationDocSchema],
     verificationSubmittedAt: {
       type: Date,
     },

@@ -1,4 +1,6 @@
 import User from '../models/User.js';
+import { notifyAdmins, emitToAdmins } from '../utils/notify.js';
+import { isValidDocType, DEFAULT_VERIFICATION_DOC_TYPE } from '../config/verificationDocTypes.js';
 
 export const submitVerification = async (req, res) => {
   try {
@@ -18,13 +20,45 @@ export const submitVerification = async (req, res) => {
       return res.status(400).json({ message: 'At least one document is required.' });
     }
 
-    const docUrls = files.map((f) => f.path);
+    // docTypes arrives parallel to the files (same order). Multipart text
+    // fields come through as a string when there's only one, so it's
+    // normalised to an array before pairing. Anything unrecognised falls back
+    // rather than rejecting the whole upload.
+    const rawTypes = req.body.docTypes;
+    const docTypes = Array.isArray(rawTypes) ? rawTypes : rawTypes ? [rawTypes] : [];
 
-    user.verificationDocs = docUrls;
+    const docs = files.map((file, i) => ({
+      url: file.path,
+      docType: isValidDocType(docTypes[i]) ? docTypes[i] : DEFAULT_VERIFICATION_DOC_TYPE,
+      fileName: file.originalname || '',
+    }));
+
+    user.verificationDocs = docs;
     user.verificationStatus = 'pending';
     user.verificationSubmittedAt = new Date();
     user.verificationRejectionReason = undefined;
     await user.save();
+
+    // Tell the admins: a bell notification each, plus a live event so an open
+    // Verifications screen gains the row without a refresh.
+    await notifyAdmins({
+      type: 'verification_submitted',
+      title: 'New verification request',
+      body: `${user.name} submitted ${docs.length} document${docs.length === 1 ? '' : 's'} for teacher verification.`,
+      link: '/admin/verifications',
+    });
+
+    emitToAdmins('verificationSubmitted', {
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        skillsTeaching: user.skillsTeaching,
+        verificationDocs: user.verificationDocs,
+        verificationSubmittedAt: user.verificationSubmittedAt,
+        verificationStatus: user.verificationStatus,
+      },
+    });
 
     res.json({
       success: true,

@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Mail, MapPin, Globe, Clock, Star, Pencil, Plus, X, Award, Loader2, FileText, ShieldCheck, Upload } from "lucide-react";
+import { Mail, MapPin, Globe, Clock, Star, Pencil, Plus, X, Award, Loader2, FileText, ShieldCheck, Upload, Eye } from "lucide-react";
 import Button from "../ui/Button";
+import { getSocket } from "../socket";
+import { VERIFICATION_DOC_TYPES } from "../utils/verificationDocTypes";
+import DocumentViewer from "../ui/DocumentViewer";
 import Badge from "../ui/Badge";
 import EditProfileModal from "../components/Modal/EditProfileModal";
 import AddSkillModal from "../components/Modal/AddSkillModal";
@@ -16,24 +19,43 @@ import {
   removeCertification,
   addCertification,
   submitVerification,
+  setVerificationStatus,
 } from "../store/profileSlice";
+
+// Mirrors multer's per-file limit in backend/config/cloudinary.js. The total
+// count caps itself: one file per document type slot.
+const MAX_VERIFICATION_FILE_BYTES = 10 * 1024 * 1024;
 
 function ProfilePage() {
   const dispatch = useDispatch();
   const { success: showSuccess, error: showError } = useToast();
   const { profile, loading, error } = useSelector((state) => state.profile);
 
+  const [previewCert, setPreviewCert] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddTeachingSkillOpen, setIsAddTeachingSkillOpen] = useState(false);
   const [isAddLearningSkillOpen, setIsAddLearningSkillOpen] = useState(false);
   const [isAddCertificationOpen, setIsAddCertificationOpen] = useState(false);
   const [isEditCertificationOpen, setIsEditCertificationOpen] = useState(false);
   const [editingCert, setEditingCert] = useState(null);
-  const [verificationFiles, setVerificationFiles] = useState([]);
+  // { [docType]: File }
+  const [verificationFiles, setVerificationFiles] = useState({});
+  // Non-recommended slots the user chose to add.
+  const [extraDocSlots, setExtraDocSlots] = useState([]);
+  const [verificationFileError, setVerificationFileError] = useState("");
   const [submittingVerification, setSubmittingVerification] = useState(false);
 
   useEffect(() => {
     dispatch(fetchProfile());
+  }, [dispatch]);
+
+  // An admin's decision lands here live, so the badge and the status panel
+  // update while the user is looking at them.
+  useEffect(() => {
+    const socket = getSocket();
+    const onReviewed = (payload) => dispatch(setVerificationStatus(payload));
+    socket.on("verificationReviewed", onReviewed);
+    return () => socket.off("verificationReviewed", onReviewed);
   }, [dispatch]);
 
   const handleRemoveTeachingSkill = (skillId) => {
@@ -48,13 +70,66 @@ function ProfilePage() {
     dispatch(removeCertification(certId));
   };
 
+  // One slot per document type, so a teacher is told what to provide instead
+  // of dropping an unlabelled pile of files on the reviewer. State is keyed by
+  // docType; picking again in the same slot replaces that file.
+  const handleVerificationFilePicked = (docType, e) => {
+    const file = e.target.files?.[0];
+    // Lets the same file be re-picked after being cleared.
+    e.target.value = "";
+    if (!file) return;
+
+    if (file.size > MAX_VERIFICATION_FILE_BYTES) {
+      setVerificationFileError(`"${file.name}" is over 10MB - please upload a smaller file.`);
+      return;
+    }
+
+    setVerificationFileError("");
+    setVerificationFiles((prev) => ({ ...prev, [docType]: file }));
+  };
+
+  const selectedVerificationCount = Object.keys(verificationFiles).length;
+
+  // Recommended slots are always offered; the rest appear once added, or if
+  // they somehow already hold a file.
+  const visibleDocSlots = VERIFICATION_DOC_TYPES.filter(
+    (t) => t.recommended || extraDocSlots.includes(t.value) || verificationFiles[t.value]
+  );
+  const remainingDocTypes = VERIFICATION_DOC_TYPES.filter(
+    (t) => !visibleDocSlots.some((v) => v.value === t.value)
+  );
+
+  const addDocSlot = (docType) => {
+    setVerificationFileError("");
+    setExtraDocSlots((prev) => (prev.includes(docType) ? prev : [...prev, docType]));
+  };
+
+  // Clearing a recommended slot leaves the row in place; clearing an optional
+  // one removes the row too, since it was only there because it was added.
+  const removeDocSlot = (docType, recommended) => {
+    removeVerificationFile(docType);
+    if (!recommended) setExtraDocSlots((prev) => prev.filter((t) => t !== docType));
+  };
+
+  const removeVerificationFile = (docType) => {
+    setVerificationFileError("");
+    setVerificationFiles((prev) => {
+      const next = { ...prev };
+      delete next[docType];
+      return next;
+    });
+  };
+
   const handleSubmitVerification = async () => {
-    if (verificationFiles.length === 0) return;
+    const entries = Object.entries(verificationFiles).map(([docType, file]) => ({ file, docType }));
+    if (entries.length === 0) return;
     setSubmittingVerification(true);
     try {
-      await dispatch(submitVerification(verificationFiles)).unwrap();
+      await dispatch(submitVerification(entries)).unwrap();
       showSuccess("Verification documents submitted. An admin will review them soon.");
-      setVerificationFiles([]);
+      setVerificationFiles({});
+      setExtraDocSlots([]);
+      setVerificationFileError("");
     } catch (err) {
       showError(err || "Failed to submit verification documents.");
     } finally {
@@ -396,8 +471,22 @@ function ProfilePage() {
                   {cert.fileUrl && (
                     <div className="flex items-center gap-3 mt-1">
                       <button
-                        onClick={() => handleDownloadCertification(cert)}
+                        onClick={() =>
+                          setPreviewCert({
+                            url: `/users/me/certifications/${cert._id}/download?disposition=inline`,
+                            title: cert.name,
+                            fileName: cert.fileName,
+                            mimeType: cert.fileMimeType,
+                          })
+                        }
                         className="flex items-center gap-1 text-teal text-xs hover:underline"
+                      >
+                        <Eye size={12} />
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleDownloadCertification(cert)}
+                        className="flex items-center gap-1 text-gray text-xs hover:underline"
                       >
                         <FileText size={12} />
                         Download
@@ -456,29 +545,97 @@ function ProfilePage() {
             </p>
           ) : (
             <div>
-              <p className="font-family-poppins text-sm text-gray mb-3">
-                Upload proof of expertise (certificates, ID, portfolio) to get a verified badge on your profile.
+              <p className="font-family-poppins text-sm text-gray mb-4">
+                Upload whichever of these you have. Each one goes to the reviewer
+                labelled, so they know what they're looking at.
               </p>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <label className="flex items-center gap-2 px-4 py-2 border border-[#D0D0D0] rounded-lg cursor-pointer hover:bg-gray-50 font-family-poppins text-sm text-black">
-                  <Upload size={16} />
-                  {verificationFiles.length > 0 ? `${verificationFiles.length} file(s) selected` : "Choose files"}
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,application/pdf"
-                    className="hidden"
-                    onChange={(e) => setVerificationFiles(Array.from(e.target.files || []))}
-                  />
-                </label>
+
+              <div className="space-y-2 mb-3">
+                {visibleDocSlots.map(({ value, label, hint, recommended }) => {
+                  const file = verificationFiles[value];
+                  return (
+                    <div
+                      key={value}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
+                        file ? "border-teal/40 bg-teal/5" : "border-[#E5E5E5]"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-family-poppins text-sm font-medium text-black">
+                          {label}
+                          {recommended && (
+                            <span className="ml-2 font-normal text-xs text-teal">Recommended</span>
+                          )}
+                        </p>
+                        <p className="font-family-poppins text-xs text-gray truncate">
+                          {file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : hint}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="flex items-center gap-1.5 px-3 py-1.5 border border-[#D0D0D0] rounded-lg cursor-pointer hover:bg-gray-50 font-family-poppins text-xs text-black transition-all">
+                          <Upload size={14} />
+                          {file ? "Replace" : "Upload"}
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={(e) => handleVerificationFilePicked(value, e)}
+                          />
+                        </label>
+                        {(file || !recommended) && (
+                          <button
+                            type="button"
+                            onClick={() => removeDocSlot(value, recommended)}
+                            className="text-gray hover:text-red-500 transition-colors"
+                            aria-label={`Remove ${label}`}
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Only the recommended slots show by default - the rest are
+                  added on demand so the form isn't a wall of empty rows. */}
+              {remainingDocTypes.length > 0 && (
+                <select
+                  value=""
+                  onChange={(e) => e.target.value && addDocSlot(e.target.value)}
+                  className="font-family-poppins text-sm border border-[#D0D0D0] rounded-lg px-3 py-2 bg-white outline-none focus:border-teal mb-3"
+                >
+                  <option value="">+ Add another document</option>
+                  {remainingDocTypes.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {verificationFileError && (
+                <p className="font-family-poppins text-xs text-red-500 mb-3">
+                  {verificationFileError}
+                </p>
+              )}
+
+              <div className="flex items-center gap-3">
                 <Button
                   variant="primary"
                   onClick={handleSubmitVerification}
-                  disabled={verificationFiles.length === 0 || submittingVerification}
+                  disabled={selectedVerificationCount === 0 || submittingVerification}
                   className="disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submittingVerification ? "Submitting..." : "Submit for Verification"}
                 </Button>
+                <span className="font-family-poppins text-xs text-gray">
+                  {selectedVerificationCount === 0
+                    ? "Attach at least one document"
+                    : `${selectedVerificationCount} document${selectedVerificationCount === 1 ? "" : "s"} ready`}
+                </span>
               </div>
             </div>
           )}
@@ -519,6 +676,15 @@ function ProfilePage() {
         mode="edit"
         initialCert={editingCert}
         onSubmit={handleSubmitEditCertification}
+      />
+      <DocumentViewer
+        isOpen={Boolean(previewCert)}
+        onClose={() => setPreviewCert(null)}
+        url={previewCert?.url}
+        title={previewCert?.title}
+        fileName={previewCert?.fileName}
+        mimeType={previewCert?.mimeType}
+        authenticated
       />
     </div>
   );

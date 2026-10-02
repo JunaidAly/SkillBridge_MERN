@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Camera, Check, GraduationCap, Loader2, LogOut, Plus, Sparkles, X } from "lucide-react";
+import { Camera, Check, GraduationCap, Loader2, LogOut, Plus, Sparkles, Upload, X } from "lucide-react";
 import { logout } from "../../store/authSlice";
 import {
   addLearningSkill,
@@ -11,9 +11,13 @@ import {
   removeTeachingSkill,
   updateProfile,
   uploadAvatar,
+  addCertification,
+  removeCertification,
 } from "../../store/profileSlice";
 import { useToast } from "../../ui/Toast/ToastContext";
 import { skillSuggestions } from "../../utils/skillSuggestions";
+import Combobox from "../../ui/Combobox";
+import { availableLanguages, timezones, certificationSuggestions } from "../../utils/profileOptions";
 
 // A compact skill input for use inside the wizard. AddSkillModal can't be
 // reused as-is (it's a modal of its own), but nothing that matters is
@@ -21,14 +25,6 @@ import { skillSuggestions } from "../../utils/skillSuggestions";
 // addTeachingSkill/addLearningSkill thunks.
 function SkillPicker({ placeholder, skills, onAdd, onRemove, busy }) {
   const [value, setValue] = useState("");
-
-  const suggestions = useMemo(() => {
-    if (!value.trim()) return [];
-    const taken = new Set(skills.map((s) => (s.name || s).toLowerCase()));
-    return skillSuggestions
-      .filter((s) => s.toLowerCase().includes(value.toLowerCase()) && !taken.has(s.toLowerCase()))
-      .slice(0, 5);
-  }, [value, skills]);
 
   const submit = async (name) => {
     const trimmed = (name ?? value).trim();
@@ -39,46 +35,28 @@ function SkillPicker({ placeholder, skills, onAdd, onRemove, busy }) {
 
   return (
     <div>
-      <div className="relative">
-        <div className="flex gap-2">
-          <input
-            type="text"
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Combobox
             value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submit();
-              }
-            }}
+            onChange={setValue}
+            options={skillSuggestions}
+            exclude={skills.map((s) => s.name || s)}
             placeholder={placeholder}
-            className="flex-1 px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+            aria-label={placeholder}
+            onSelect={(name) => submit(name)}
+            onSubmit={() => submit()}
           />
-          <button
-            type="button"
-            onClick={() => submit()}
-            disabled={busy || !value.trim()}
-            className="px-4 py-3 bg-teal text-white rounded-lg font-family-poppins text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-          >
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus size={16} />}
-            Add
-          </button>
         </div>
-
-        {suggestions.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg z-10 max-h-44 overflow-y-auto">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => submit(s)}
-                className="w-full px-4 py-2 text-left font-family-poppins text-sm hover:bg-teal/10 transition-colors"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => submit()}
+          disabled={busy || !value.trim()}
+          className="px-4 py-3 h-fit bg-teal text-white rounded-lg font-family-poppins text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus size={16} />}
+          Add
+        </button>
       </div>
 
       {skills.length > 0 && (
@@ -108,6 +86,7 @@ function SkillPicker({ placeholder, skills, onAdd, onRemove, busy }) {
 const STEP_LABELS = {
   intent: "Your Goals",
   teaching: "Skills You Teach",
+  certifications: "Certifications",
   learning: "Skills You Learn",
   profile: "Your Profile",
 };
@@ -122,19 +101,30 @@ function OnboardingWizard({ profile }) {
   const [wantsToLearn, setWantsToLearn] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [bio, setBio] = useState(profile?.bio || "");
+  const [location, setLocation] = useState(profile?.location || "");
+  const [timezone, setTimezone] = useState(profile?.timezone || "");
+  const [languages, setLanguages] = useState(profile?.languages || []);
+  const [acceptsFreeTrial, setAcceptsFreeTrial] = useState(
+    profile?.acceptsFreeTrialSessions || false
+  );
+  const [cert, setCert] = useState({ name: "", issuer: "", year: "", file: null });
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(profile?.avatar || null);
   const [busy, setBusy] = useState(false);
 
   const skillsTeaching = profile?.skillsTeaching || [];
   const skillsLearning = profile?.skillsLearning || [];
+  const certifications = profile?.certifications || [];
 
   // The welcome screen is folded into the intent step rather than being its own
   // click-through - the signup form already introduced the product, so a pure
   // "click Next" screen would just be friction.
   const steps = useMemo(() => {
     const list = ["intent"];
-    if (wantsToTeach) list.push("teaching");
+    // Certifications are teaching credentials (they feed teacher verification),
+    // so they ride along with the teaching flow rather than being asked of
+    // someone who only came here to learn.
+    if (wantsToTeach) list.push("teaching", "certifications");
     if (wantsToLearn) list.push("learning");
     list.push("profile", "done");
     return list;
@@ -204,13 +194,53 @@ function OnboardingWizard({ profile }) {
     reader.readAsDataURL(file);
   };
 
+  const toggleLanguage = (lang) =>
+    setLanguages((prev) =>
+      prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
+    );
+
+  // Certifications save immediately, like skills - they go through the same
+  // multipart endpoint Edit Profile uses, file and all.
+  const handleAddCertification = async () => {
+    if (!cert.name.trim()) return;
+    setBusy(true);
+    try {
+      await dispatch(addCertification({
+        name: cert.name.trim(),
+        issuer: cert.issuer.trim(),
+        year: cert.year.trim(),
+        file: cert.file,
+      })).unwrap();
+      setCert({ name: "", issuer: "", year: "", file: null });
+    } catch (err) {
+      toast.error(err || "Failed to add certification");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemoveCertification = async (certId) => {
+    try {
+      await dispatch(removeCertification(certId)).unwrap();
+    } catch (err) {
+      toast.error(err || "Failed to remove certification");
+    }
+  };
+
+  // One PUT for every scalar profile field, including the teaching toggle set
+  // a couple of steps earlier - skills and certifications have already saved
+  // themselves through their own endpoints by this point.
   const saveProfileStep = async () => {
     setBusy(true);
     try {
       if (avatarFile) await dispatch(uploadAvatar(avatarFile)).unwrap();
-      if (bio.trim() !== (profile?.bio || "")) {
-        await dispatch(updateProfile({ bio: bio.trim() })).unwrap();
-      }
+      await dispatch(updateProfile({
+        bio: bio.trim(),
+        location: location.trim(),
+        timezone,
+        languages,
+        acceptsFreeTrialSessions: acceptsFreeTrial,
+      })).unwrap();
       setStepIndex((i) => i + 1);
     } catch (err) {
       toast.error(err || "Failed to save your details");
@@ -223,6 +253,7 @@ function OnboardingWizard({ profile }) {
     intent: `Welcome to SkillBridge${profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}!`,
     teaching: "What can you teach?",
     learning: "What do you want to learn?",
+    certifications: "Any certifications?",
     profile: "Finish your profile",
   };
 
@@ -230,7 +261,8 @@ function OnboardingWizard({ profile }) {
     intent: "What brings you here? Pick whatever fits — you can choose both.",
     teaching: "Add the skills you're confident helping others with.",
     learning: "We'll use these to recommend teachers for you.",
-    profile: "A photo and a short intro help people decide to book you.",
+    certifications: "Optional — they help students trust your expertise.",
+    profile: "A photo, a short intro and where you're based.",
   };
 
   return (
@@ -359,13 +391,120 @@ function OnboardingWizard({ profile }) {
             )}
 
             {step === "teaching" && (
-              <SkillPicker
-                placeholder="e.g., React Development"
-                skills={skillsTeaching}
-                busy={busy}
-                onAdd={(name) => addSkill("teaching", name)}
-                onRemove={(id) => removeSkill("teaching", id)}
-              />
+              <>
+                <SkillPicker
+                  placeholder="e.g., React Development"
+                  skills={skillsTeaching}
+                  busy={busy}
+                  onAdd={(name) => addSkill("teaching", name)}
+                  onRemove={(id) => removeSkill("teaching", id)}
+                />
+
+                <label className="flex items-start gap-2.5 mt-5 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={acceptsFreeTrial}
+                    onChange={(e) => setAcceptsFreeTrial(e.target.checked)}
+                    className="mt-0.5 accent-teal"
+                  />
+                  <span>
+                    <span className="font-family-poppins text-sm font-medium text-black block">
+                      Accept free trial sessions
+                    </span>
+                    <span className="font-family-poppins text-xs text-gray">
+                      Students can book one free session with you. You earn no credits
+                      for it, so this is off unless you opt in.
+                    </span>
+                  </span>
+                </label>
+              </>
+            )}
+
+            {step === "certifications" && (
+              <>
+                <Combobox
+                  value={cert.name}
+                  onChange={(v) => setCert((c) => ({ ...c, name: v }))}
+                  options={certificationSuggestions}
+                  exclude={certifications.map((c) => c.name)}
+                  placeholder="Certification name"
+                  aria-label="Certification name"
+                  onSelect={(name) => setCert((c) => ({ ...c, name }))}
+                  onSubmit={handleAddCertification}
+                  disabled={busy}
+                />
+
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <input
+                    type="text"
+                    value={cert.issuer}
+                    onChange={(e) => setCert((c) => ({ ...c, issuer: e.target.value }))}
+                    placeholder="Issuer (optional)"
+                    className="px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+                  />
+                  <input
+                    type="text"
+                    value={cert.year}
+                    onChange={(e) => setCert((c) => ({ ...c, year: e.target.value }))}
+                    placeholder="Year (optional)"
+                    className="px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 mt-3">
+                  <label className="flex-1 flex items-center gap-2 px-4 py-2.5 border border-dashed border-[#D0D0D0] rounded-lg cursor-pointer hover:border-teal transition-all">
+                    <Upload className="text-gray shrink-0" size={16} />
+                    <span className="font-family-poppins text-sm text-gray truncate">
+                      {cert.file ? cert.file.name : "Attach proof (optional)"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => setCert((c) => ({ ...c, file: e.target.files?.[0] || null }))}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddCertification}
+                    disabled={busy || !cert.name.trim()}
+                    className="px-4 py-2.5 bg-teal text-white rounded-lg font-family-poppins text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  >
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus size={16} />}
+                    Add
+                  </button>
+                </div>
+
+                {certifications.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {certifications.map((c) => (
+                      <div
+                        key={c._id || c.name}
+                        className="flex items-center justify-between gap-3 p-3 bg-teal/5 rounded-lg"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-family-poppins text-sm font-medium text-black truncate">
+                            {c.name}
+                          </p>
+                          {(c.issuer || c.year) && (
+                            <p className="font-family-poppins text-xs text-gray truncate">
+                              {[c.issuer, c.year].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCertification(c._id)}
+                          className="text-gray hover:text-red-500 transition-colors shrink-0"
+                          aria-label={`Remove ${c.name}`}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {step === "learning" && (
@@ -425,6 +564,57 @@ function OnboardingWizard({ profile }) {
                   className="w-full p-3 text-sm text-black border border-[#D0D0D0] rounded-lg resize-none font-family-poppins outline-none focus:border-teal"
                 />
                 <p className="text-xs text-gray mt-1">{bio.length}/500 characters</p>
+
+                <label className="font-family-poppins text-sm font-medium text-gray block mt-4 mb-2">
+                  Location
+                </label>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g., Karachi, Pakistan"
+                  className="w-full px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal"
+                />
+
+                <label className="font-family-poppins text-sm font-medium text-gray block mt-4 mb-2">
+                  Timezone
+                </label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full px-4 py-3 border border-[#D0D0D0] rounded-lg font-family-poppins text-sm outline-none focus:border-teal bg-white"
+                >
+                  <option value="">Select your timezone</option>
+                  {timezones.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="font-family-poppins text-sm font-medium text-gray block mt-4 mb-2">
+                  Languages you speak
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {availableLanguages.map((lang) => {
+                    const selected = languages.includes(lang);
+                    return (
+                      <button
+                        key={lang}
+                        type="button"
+                        onClick={() => toggleLanguage(lang)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-family-poppins text-sm transition-all ${
+                          selected
+                            ? "bg-teal/10 border-teal text-teal"
+                            : "border-[#D0D0D0] text-gray hover:border-[#B0B0B0]"
+                        }`}
+                      >
+                        {selected && <Check size={14} />}
+                        {lang}
+                      </button>
+                    );
+                  })}
+                </div>
               </>
             )}
 
@@ -468,7 +658,7 @@ function OnboardingWizard({ profile }) {
                 </button>
               )}
 
-              {(step === "teaching" || step === "learning") && (
+              {(step === "teaching" || step === "learning" || step === "certifications") && (
                 <button
                   type="button"
                   onClick={() => setStepIndex((i) => i + 1)}

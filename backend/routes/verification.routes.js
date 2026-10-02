@@ -2,13 +2,17 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { uploadVerificationDoc } from '../config/cloudinary.js';
 import { submitVerification } from '../controllers/verification.controller.js';
+import { VERIFICATION_DOC_TYPE_VALUES } from '../config/verificationDocTypes.js';
+
+// One file per document type - the upload form offers a slot for each.
+const MAX_VERIFICATION_DOCS = VERIFICATION_DOC_TYPE_VALUES.length;
 
 const router = express.Router();
 
 // NOTE: multer/cloudinary errors happen *before* the async handler, so we wrap the upload
 // (same pattern as routes/user.routes.js's certification upload)
 const uploadVerificationDocsMiddleware = (req, res, next) => {
-  uploadVerificationDoc.array('docs', 5)(req, res, (err) => {
+  uploadVerificationDoc.array('docs', MAX_VERIFICATION_DOCS)(req, res, (err) => {
     if (err) {
       console.error('Verification doc upload error:', err);
       if (err.code === 'LIMIT_FILE_SIZE') {

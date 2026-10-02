@@ -13,6 +13,21 @@ const ACTION_LABELS = {
 
 const formatAction = (action) => ACTION_LABELS[action] || action;
 
+// The details blob used to be dumped as raw JSON, which read like a debug
+// console rather than an audit trail. This turns it into labelled lines and
+// drops the internal record ids, which mean nothing to the person reading it.
+const readableDetails = (details) =>
+  Object.entries(details || {})
+    .filter(([key, value]) => !/(^|[a-z])Id$|^id$/.test(key) && value !== null && value !== "")
+    .map(([key, value]) => [
+      key
+        .replace(/([A-Z])/g, " $1")
+        .replace(/[_-]+/g, " ")
+        .replace(/^./, (c) => c.toUpperCase())
+        .trim(),
+      typeof value === "object" ? JSON.stringify(value) : String(value),
+    ]);
+
 const formatDate = (dateString) =>
   new Date(dateString).toLocaleDateString("en-US", {
     month: "short",
@@ -101,7 +116,11 @@ function AdminAuditLog() {
                 <tbody>
                   {entries.map((entry) => {
                     const isExpanded = expandedId === entry.id;
-                    const hasDetails = entry.details && Object.keys(entry.details).length > 0;
+                    // Based on what's actually displayable, so an entry whose
+                    // details hold nothing but internal ids shows no expander
+                    // rather than an empty panel.
+                    const detailRows = readableDetails(entry.details);
+                    const hasDetails = detailRows.length > 0;
                     return (
                       <Fragment key={entry.id}>
                         <tr className="border-b border-[#F0F0F0] last:border-0">
@@ -140,9 +159,14 @@ function AdminAuditLog() {
                         {isExpanded && hasDetails && (
                           <tr className="border-b border-[#F0F0F0] last:border-0">
                             <td colSpan={5} className="pb-3">
-                              <pre className="font-family-poppins text-xs bg-gray-50 rounded-lg p-3 overflow-x-auto text-gray">
-                                {JSON.stringify(entry.details, null, 2)}
-                              </pre>
+                              <dl className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                                {detailRows.map(([label, value]) => (
+                                  <div key={label} className="flex gap-2 text-xs font-family-poppins">
+                                    <dt className="text-gray shrink-0">{label}:</dt>
+                                    <dd className="text-black wrap-break-word">{value}</dd>
+                                  </div>
+                                ))}
+                              </dl>
                             </td>
                           </tr>
                         )}
