@@ -16,6 +16,8 @@ const formatDate = (dateString) =>
 const formatPKR = (amount) =>
   new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(amount || 0);
 
+// `balance` here is the EARNED bucket only - purchased credits are not
+// cashable, so they must never widen this cap.
 function PayoutSection({ balance, onBalanceChange }) {
   const { success, error: showError } = useToast();
 
@@ -108,7 +110,7 @@ function PayoutSection({ balance, onBalanceChange }) {
         <form onSubmit={handleSubmit} className="space-y-3 mb-6 border border-[#E5E5E5] rounded-lg p-4">
           <div>
             <label className="font-family-poppins text-xs text-gray block mb-1">
-              Credits to cash out (balance: {balance})
+              Credits to cash out (earned: {balance})
             </label>
             <input
               type="number"

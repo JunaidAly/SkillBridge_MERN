@@ -105,17 +105,24 @@ class RecommendationEngine:
         return enriched
 
     def _generate_reason(self, content_score: float, direction: str = LEARN) -> str:
-        """Human-readable reason, worded for the direction being shown."""
+        """
+        Human-readable reason, worded for the direction being shown.
+
+        Thresholds are set against RAW cosine similarity. They were previously
+        tuned for a normalised 0.30-0.85 band, where 0.7 meant "near the top of
+        this list" rather than "actually a close match" - on the real scale an
+        all-but-identical skill scores ~0.95 and a loose overlap ~0.49.
+        """
         if direction == TEACH:
-            if content_score >= 0.7:
+            if content_score >= 0.75:
                 return "Wants to learn exactly what you teach"
-            if content_score >= 0.5:
+            if content_score >= 0.45:
                 return "Interested in skills close to what you teach"
             return "Shares some learning interests with your skills"
 
-        if content_score >= 0.7:
+        if content_score >= 0.75:
             return "Excellent match for your learning interests and goals"
-        if content_score >= 0.5:
+        if content_score >= 0.45:
             return "Good match based on your skills and interests"
         return "Matches some of your learning interests"
 

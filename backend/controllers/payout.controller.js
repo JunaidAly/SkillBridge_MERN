@@ -1,6 +1,7 @@
 import PayoutRequest from '../models/PayoutRequest.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import { creditsToRupees } from '../config/creditConversion.js';
+import { holdEarnedForPayout } from '../utils/wallet.js';
 
 // Below this, admin would have to manually process a payout request over a
 // negligible amount - not worth the manual bank-transfer overhead.
@@ -45,15 +46,15 @@ export const requestPayout = async (req, res) => {
     }
 
     const wallet = await CreditWallet.findOne({ user: userId });
-    if (!wallet || wallet.balance < credits) {
+    if (!wallet || wallet.earnedBalance < credits) {
       return res.status(400).json({
-        message: `Insufficient balance. You have ${wallet?.balance || 0} credits, requested ${credits}.`,
+        message: `Only credits earned by teaching can be cashed out. You have ${wallet?.earnedBalance || 0} earned credits, requested ${credits}.`,
       });
     }
 
     // Hold pattern: deduct immediately so the same credits can't be spent or
     // requested again while the payout is pending review.
-    wallet.balance -= credits;
+    holdEarnedForPayout(wallet, credits);
     wallet.totalSpent += credits;
     await wallet.save();
 

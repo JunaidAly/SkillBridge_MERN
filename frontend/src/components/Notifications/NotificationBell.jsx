@@ -1,7 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
-import { Bell, Trash2 } from "lucide-react";
+import {
+  Bell,
+  Trash2,
+  MessageSquare,
+  CalendarClock,
+  CalendarCheck,
+  CalendarX,
+  Wallet,
+  FileCheck,
+  BadgeCheck,
+  BadgeX,
+  RotateCcw,
+  Banknote,
+} from "lucide-react";
+
+// Each notification type gets its own icon and tint, so the list can be
+// scanned at a glance - every row used to carry the same teal dot, which only
+// said "unread" and nothing about what had happened.
+const NOTIFICATION_STYLES = {
+  new_message: { Icon: MessageSquare, className: "text-teal bg-teal/10" },
+  meeting_reminder: { Icon: CalendarClock, className: "text-amber-600 bg-amber-50" },
+  meeting_confirmed: { Icon: CalendarCheck, className: "text-teal bg-teal/10" },
+  meeting_cancelled: { Icon: CalendarX, className: "text-red-500 bg-red-50" },
+  credit_low_balance: { Icon: Wallet, className: "text-amber-600 bg-amber-50" },
+  verification_submitted: { Icon: FileCheck, className: "text-blue-500 bg-blue-50" },
+  verification_approved: { Icon: BadgeCheck, className: "text-teal bg-teal/10" },
+  verification_rejected: { Icon: BadgeX, className: "text-red-500 bg-red-50" },
+  refund_approved: { Icon: RotateCcw, className: "text-teal bg-teal/10" },
+  refund_rejected: { Icon: RotateCcw, className: "text-red-500 bg-red-50" },
+  payout_approved: { Icon: Banknote, className: "text-teal bg-teal/10" },
+  payout_rejected: { Icon: Banknote, className: "text-red-500 bg-red-50" },
+  payout_paid: { Icon: Banknote, className: "text-teal bg-teal/10" },
+};
+
+const notificationStyle = (type) =>
+  NOTIFICATION_STYLES[type] || { Icon: Bell, className: "text-gray bg-gray-100" };
 import apiClient from "../../api/client";
 import { getSocket, disconnectSocket } from "../../socket";
 import { logout } from "../../store/authSlice";
@@ -192,30 +227,46 @@ function NotificationBell() {
               </p>
             )}
             {!loading &&
-              notifications.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => handleNotificationClick(n)}
-                  className={`w-full text-left px-4 py-3 border-b border-[#F0F0F0] last:border-b-0 hover:bg-gray-50 transition-colors flex gap-2 ${
-                    !n.read ? "bg-light-teal/30" : ""
-                  }`}
-                >
-                  <span
-                    className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${!n.read ? "bg-teal" : "bg-transparent"}`}
-                  />
-                  <span className="min-w-0">
-                    <p className="font-family-poppins text-sm font-medium text-black line-clamp-2">
-                      {n.title}
-                    </p>
-                    {n.body && (
-                      <p className="font-family-poppins text-xs text-gray line-clamp-2 mt-0.5">{n.body}</p>
+              notifications.map((n) => {
+                const { Icon, className: iconClass } = notificationStyle(n.type);
+                return (
+                  <button
+                    key={n.id}
+                    onClick={() => handleNotificationClick(n)}
+                    className={`w-full text-left px-4 py-3 border-b border-[#F0F0F0] last:border-b-0 hover:bg-gray-50 transition-colors flex gap-3 items-start ${
+                      !n.read ? "bg-light-teal/30" : ""
+                    }`}
+                  >
+                    <span
+                      className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${iconClass}`}
+                    >
+                      <Icon size={17} />
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <p
+                        className={`font-family-poppins text-sm text-black line-clamp-2 ${
+                          !n.read ? "font-semibold" : "font-medium"
+                        }`}
+                      >
+                        {n.title}
+                      </p>
+                      {n.body && (
+                        <p className="font-family-poppins text-xs text-gray line-clamp-2 mt-0.5">{n.body}</p>
+                      )}
+                      <p className="font-family-poppins text-[11px] text-gray-400 mt-1">
+                        {timeAgo(n.createdAt)}
+                      </p>
+                    </span>
+
+                    {/* The dot carried both meanings before; now it only has to
+                        say "unread", so it moves out of the icon's way. */}
+                    {!n.read && (
+                      <span className="shrink-0 mt-2 h-2 w-2 rounded-full bg-teal" />
                     )}
-                    <p className="font-family-poppins text-[11px] text-gray-400 mt-1">
-                      {timeAgo(n.createdAt)}
-                    </p>
-                  </span>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
           </div>
         </div>
       )}

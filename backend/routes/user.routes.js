@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import Report from '../models/Report.js';
+import { CreditWallet } from '../models/Credit.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { uploadAvatar, uploadCertification, deleteFromCloudinary } from '../config/cloudinary.js';
 
@@ -221,9 +222,26 @@ router.delete('/me/skills/teaching/:skillId', authenticateToken, async (req, res
       return res.status(404).json({ message: 'User not found' });
     }
 
-    user.skillsTeaching = user.skillsTeaching.filter(
+    const remaining = user.skillsTeaching.filter(
       skill => skill._id.toString() !== req.params.skillId
     );
+
+    // Dropping the last teaching skill makes someone a non-teacher, and the
+    // cash-out screen disappears with it - which would strand any credits they
+    // earned. Make them withdraw first rather than silently locking the money.
+    if (remaining.length === 0 && user.skillsTeaching.length > 0) {
+      const wallet = await CreditWallet.findOne({ user: user._id }).select('earnedBalance');
+      if (wallet?.earnedBalance > 0) {
+        return res.status(400).json({
+          message:
+            `You still have ${wallet.earnedBalance} earned credits. Cash them out before ` +
+            'removing your last teaching skill, otherwise you cannot withdraw them.',
+          earnedBalance: wallet.earnedBalance,
+        });
+      }
+    }
+
+    user.skillsTeaching = remaining;
     await user.save();
 
     res.json({

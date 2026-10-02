@@ -147,8 +147,9 @@ function EditProfileModal({ isOpen, onClose, user }) {
       setSkillsTeaching(updatedSkills);
       showSuccess("Teaching skill removed successfully!");
     } catch (error) {
-      console.error("Failed to remove teaching skill:", error);
-      showError(error.message || "Failed to remove teaching skill");
+      // The thunk rejects with a plain string (e.g. the "cash out first"
+      // guard), so error.message would be undefined and swallow it.
+      showError(error || "Failed to remove teaching skill");
     }
   };
 

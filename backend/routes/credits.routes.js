@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { CreditWallet, CreditTransaction } from '../models/Credit.js';
 import User from '../models/User.js';
-import { getOrCreateWallet, notifyIfCrossedLowBalance } from '../utils/wallet.js';
+import { getOrCreateWallet, notifyIfCrossedLowBalance, spendCredits, addEarnedCredits } from '../utils/wallet.js';
 import { CREDITS_PER_TEACHING_SESSION, CREDITS_PER_LEARNING_SESSION } from '../config/sessionCreditRates.js';
 
 const router = express.Router();
@@ -48,6 +48,10 @@ router.get('/wallet', authenticateToken, async (req, res) => {
       success: true,
       wallet: {
         balance: wallet.balance,
+        // Split out so the UI can be honest about what is cashable - only
+        // earned credits can go to a payout.
+        purchasedBalance: wallet.purchasedBalance,
+        earnedBalance: wallet.earnedBalance,
         totalEarned: wallet.totalEarned,
         totalSpent: wallet.totalSpent,
         earnedThisMonth: stats.earned,
@@ -98,9 +102,8 @@ router.post('/earn/teaching', authenticateToken, async (req, res) => {
 
     const wallet = await getOrCreateWallet(userId);
 
-    // Add credits for teaching
-    wallet.balance += CREDITS_PER_TEACHING_SESSION;
-    wallet.totalEarned += CREDITS_PER_TEACHING_SESSION;
+    // Teaching is the only thing that fills the cashable bucket.
+    addEarnedCredits(wallet, CREDITS_PER_TEACHING_SESSION);
     await wallet.save();
 
     // Record transaction
@@ -145,10 +148,9 @@ router.post('/spend/learning', authenticateToken, async (req, res) => {
       });
     }
 
-    // Deduct credits for learning
+    // Deduct for learning - purchased credits first, then earned.
     const balanceBefore = wallet.balance;
-    wallet.balance -= CREDITS_PER_LEARNING_SESSION;
-    wallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
+    spendCredits(wallet, CREDITS_PER_LEARNING_SESSION);
     await wallet.save();
     notifyIfCrossedLowBalance(userId, balanceBefore, wallet.balance);
 

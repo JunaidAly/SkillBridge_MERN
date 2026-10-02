@@ -8,6 +8,7 @@ import { getPack, listPackages } from '../config/creditPacks.js';
 import Transaction from '../models/Transaction.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import RefundRequest from '../models/RefundRequest.js';
+import { getOrCreateWallet, addPurchasedCredits } from '../utils/wallet.js';
 
 export const getPackages = async (req, res) => {
   res.json({ packages: listPackages() });
@@ -98,19 +99,11 @@ async function finalizeCompletedTransaction(transaction, rawPayload, providerTra
     transactionRef: claimed._id,
   });
 
-  let wallet = await CreditWallet.findOne({ user: claimed.user });
-  if (!wallet) {
-    wallet = await CreditWallet.create({
-      user: claimed.user,
-      balance: claimed.creditsGranted,
-      totalEarned: claimed.creditsGranted,
-      totalSpent: 0,
-    });
-  } else {
-    wallet.balance += claimed.creditsGranted;
-    wallet.totalEarned += claimed.creditsGranted;
-    await wallet.save();
-  }
+  // Bought credits land in the purchased bucket - spendable, but never
+  // cashable. They are also not "earned", so totalEarned is left alone.
+  const wallet = await getOrCreateWallet(claimed.user);
+  addPurchasedCredits(wallet, claimed.creditsGranted);
+  await wallet.save();
 }
 
 async function finalizeFailedTransaction(transaction, rawPayload) {

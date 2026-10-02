@@ -58,8 +58,14 @@ function ProfilePage() {
     return () => socket.off("verificationReviewed", onReviewed);
   }, [dispatch]);
 
-  const handleRemoveTeachingSkill = (skillId) => {
-    dispatch(removeTeachingSkill(skillId));
+  const handleRemoveTeachingSkill = async (skillId) => {
+    try {
+      await dispatch(removeTeachingSkill(skillId)).unwrap();
+    } catch (err) {
+      // Surfaces the server's reason - notably the guard that stops someone
+      // dropping their last teaching skill while earned credits are unpaid.
+      showError(err || "Failed to remove teaching skill");
+    }
   };
 
   const handleRemoveLearningSkill = (skillId) => {

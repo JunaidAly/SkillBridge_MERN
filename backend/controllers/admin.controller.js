@@ -10,6 +10,7 @@ import SessionDispute from '../models/SessionDispute.js';
 import { processCompletedMeetingCredits } from '../utils/meetingCompletion.js';
 import { logAdminAction } from '../utils/auditLog.js';
 import { notifyUser, emitToUser, emitToAdmins } from '../utils/notify.js';
+import { releaseEarnedFromPayout } from '../utils/wallet.js';
 import {
   verificationApprovedEmail,
   verificationRejectedEmail,
@@ -910,7 +911,7 @@ export const reviewPayoutRequest = async (req, res) => {
     // decision === 'rejected' - reverse the hold so the teacher gets their credits back.
     const wallet = await CreditWallet.findOne({ user: payoutRequest.teacher._id });
     if (wallet) {
-      wallet.balance += payoutRequest.creditsRequested;
+      releaseEarnedFromPayout(wallet, payoutRequest.creditsRequested);
       wallet.totalEarned += payoutRequest.creditsRequested;
       await wallet.save();
 

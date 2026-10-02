@@ -2,7 +2,7 @@ import Meeting from '../models/Meeting.js';
 import User from '../models/User.js';
 import SessionDispute from '../models/SessionDispute.js';
 import { CreditTransaction } from '../models/Credit.js';
-import { getOrCreateWallet, notifyIfCrossedLowBalance } from './wallet.js';
+import { getOrCreateWallet, notifyIfCrossedLowBalance, spendCredits, addEarnedCredits } from './wallet.js';
 import { CREDITS_PER_TEACHING_SESSION, CREDITS_PER_LEARNING_SESSION } from '../config/sessionCreditRates.js';
 
 // How long either participant has to report a no-show before credits finalize.
@@ -102,13 +102,13 @@ export async function processCompletedMeetingCredits(meeting) {
   const teacherWallet = await getOrCreateWallet(teacherId);
 
   const learnerBalanceBefore = learnerWallet.balance;
-  learnerWallet.balance -= CREDITS_PER_LEARNING_SESSION;
-  learnerWallet.totalSpent += CREDITS_PER_LEARNING_SESSION;
+  // Draws from purchased credits first, then earned.
+  spendCredits(learnerWallet, CREDITS_PER_LEARNING_SESSION);
   await learnerWallet.save();
   notifyIfCrossedLowBalance(learnerId, learnerBalanceBefore, learnerWallet.balance);
 
-  teacherWallet.balance += CREDITS_PER_TEACHING_SESSION;
-  teacherWallet.totalEarned += CREDITS_PER_TEACHING_SESSION;
+  // Teaching is the only thing that fills the cashable bucket.
+  addEarnedCredits(teacherWallet, CREDITS_PER_TEACHING_SESSION);
   await teacherWallet.save();
 
   await CreditTransaction.create([

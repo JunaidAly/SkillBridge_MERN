@@ -1,15 +1,31 @@
-import { Wallet, TrendingUp, TrendingDown } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Banknote } from "lucide-react";
 
-function CreditStats({ balance, earned, spent, loading }) {
+function CreditStats({ balance, purchased, earnedBalance, earned, spent, loading, showCashOut }) {
   const stats = [
     {
       title: "Available Balance",
       value: balance,
+      // The split is only worth spelling out for someone who can actually
+      // cash out - to a student the two halves mean the same thing.
+      caption: showCashOut ? `${purchased} bought · ${earnedBalance} earned` : null,
       icon: Wallet,
       iconBg: "bg-orange-100",
       iconColor: "text-orange-500",
       valueColor: "text-black",
     },
+    ...(showCashOut
+      ? [
+          {
+            title: "Available to Cash Out",
+            value: earnedBalance,
+            caption: "Credits earned by teaching",
+            icon: Banknote,
+            iconBg: "bg-teal/10",
+            iconColor: "text-teal",
+            valueColor: "text-teal",
+          },
+        ]
+      : []),
     {
       title: "Earned This Month",
       value: `+${earned}`,
@@ -29,7 +45,7 @@ function CreditStats({ balance, earned, spent, loading }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${showCashOut ? "xl:grid-cols-4" : "md:grid-cols-3"}`}>
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
@@ -48,11 +64,16 @@ function CreditStats({ balance, earned, spent, loading }) {
             {loading ? (
               <div className="h-9 w-20 bg-gray-200 rounded animate-pulse" />
             ) : (
-              <p
-                className={`font-family-poppins text-3xl font-bold ${stat.valueColor}`}
-              >
-                {stat.value}
-              </p>
+              <>
+                <p
+                  className={`font-family-poppins text-3xl font-bold ${stat.valueColor}`}
+                >
+                  {stat.value}
+                </p>
+                {stat.caption && (
+                  <p className="font-family-poppins text-xs text-gray mt-1">{stat.caption}</p>
+                )}
+              </>
             )}
           </div>
         );

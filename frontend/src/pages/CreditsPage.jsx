@@ -5,15 +5,29 @@ import RecentTransactions from "../components/Credits/RecentTransactions";
 import BuyCredits from "../components/Credits/BuyCredits";
 import PayoutSection from "../components/Credits/PayoutSection";
 import { fetchWallet, fetchTransactions } from "../store/creditsSlice";
+import { fetchProfile } from "../store/profileSlice";
 
 function CreditsPage() {
   const dispatch = useDispatch();
   const { wallet, transactions, loading } = useSelector((state) => state.credits);
+  const { profile } = useSelector((state) => state.profile);
 
   useEffect(() => {
     dispatch(fetchWallet());
     dispatch(fetchTransactions({ limit: 20, offset: 0 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!profile) dispatch(fetchProfile());
+  }, [profile, dispatch]);
+
+  // Cashing out is a teacher's concern, so it stays hidden until someone
+  // actually teaches. Gated on the skills on the profile rather than what was
+  // picked during onboarding, so adding a teaching skill later reveals it on
+  // its own. The earned-balance check keeps it visible for anyone who still
+  // holds earnings after removing their teaching skills.
+  const canCashOut =
+    (profile?.skillsTeaching?.length ?? 0) > 0 || (wallet?.earnedBalance ?? 0) > 0;
 
   return (
     <div>
@@ -31,6 +45,9 @@ function CreditsPage() {
       <div className="mb-6">
         <CreditStats
           balance={wallet?.balance ?? 0}
+          purchased={wallet?.purchasedBalance ?? 0}
+          earnedBalance={wallet?.earnedBalance ?? 0}
+          showCashOut={canCashOut}
           earned={wallet?.earnedThisMonth ?? 0}
           spent={wallet?.spentThisMonth ?? 0}
           loading={loading}
@@ -48,12 +65,14 @@ function CreditsPage() {
       </div>
 
       {/* Teacher Payouts */}
-      <div className="mt-6">
-        <PayoutSection
-          balance={wallet?.balance ?? 0}
-          onBalanceChange={() => dispatch(fetchWallet())}
-        />
-      </div>
+      {canCashOut && (
+        <div className="mt-6">
+          <PayoutSection
+            balance={wallet?.earnedBalance ?? 0}
+            onBalanceChange={() => dispatch(fetchWallet())}
+          />
+        </div>
+      )}
     </div>
   );
 }

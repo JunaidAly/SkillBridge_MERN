@@ -15,7 +15,6 @@ corpus builder in one direction and as the query builder in the other.
 """
 import logging
 from typing import List, Dict, Optional, Tuple
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from model_storage import model_storage
@@ -169,20 +168,24 @@ class ContentBasedEngine:
         query_vector = corpus['vectorizer'].transform([query_text])
         similarities = cosine_similarity(query_vector, corpus['matrix'])[0]
 
-        # A raw score of 0 means the query and this entry share no vocabulary at
-        # all. Keeping those just to fill `limit` hands back arbitrary people
-        # under a fabricated match percentage - every result came back at an
-        # identical 65% that way, because _normalize_scores collapses a flat
-        # all-zero array to its midpoint. Dropping them is what makes a genuine
-        # "no matches yet" answer possible.
-        hits = [(uid, raw) for uid, raw in zip(corpus['ids'], similarities) if raw > 0]
+        # A raw score of 0 means the query and this entry share no vocabulary
+        # at all. Keeping those just to fill `limit` would hand back arbitrary
+        # people under a fabricated percentage; dropping them is what makes a
+        # genuine "no matches yet" answer possible.
+        hits = [(uid, float(raw)) for uid, raw in zip(corpus['ids'], similarities) if raw > 0]
         if not hits:
             return []
 
-        scores = self._normalize_scores(np.array([raw for _, raw in hits]))
-        ranked = list(zip([uid for uid, _ in hits], scores))
-        ranked.sort(key=lambda x: x[1], reverse=True)
-        return ranked[:limit]
+        # The cosine score is used as-is. It was previously min-max normalised
+        # into a 0.30-0.85 band, which made the number meaningless: the best
+        # result in any set always read 85% and the worst always 30%, no matter
+        # how good either actually was, and a lone result collapsed to a flat
+        # 65%. Measured against real data the raw scores are already well
+        # spread and interpretable - an all-but-identical skill match scores
+        # ~0.95 and a loose one ~0.49 - so a percentage now means the same
+        # thing in every list instead of just "ranked first".
+        hits.sort(key=lambda x: x[1], reverse=True)
+        return hits[:limit]
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -286,26 +289,6 @@ class ContentBasedEngine:
     # ------------------------------------------------------------------ #
     # Scoring helpers
     # ------------------------------------------------------------------ #
-
-    def _normalize_scores(self, scores: np.ndarray) -> np.ndarray:
-        """
-        Spread raw cosine scores into a more realistic 0.30-0.85 band.
-        """
-        if len(scores) == 0:
-            return scores
-
-        scores = np.power(scores, 1.5)
-
-        min_score = np.min(scores)
-        max_score = np.max(scores)
-
-        if max_score - min_score > 0:
-            normalized = (scores - min_score) / (max_score - min_score)
-            normalized = 0.3 + (normalized * 0.55)
-        else:
-            normalized = np.full_like(scores, 0.65)
-
-        return normalized
 
     @staticmethod
     def _default_recommendations(corpus: Dict, limit: int) -> List[Tuple[str, float]]:

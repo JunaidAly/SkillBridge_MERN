@@ -60,7 +60,26 @@ const creditWalletSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    // Credits are held in two buckets because only what a teacher EARNED may
+    // be cashed out. Letting purchased credits reach a payout would turn the
+    // platform into a card-to-bank transfer: buy with a card, withdraw to a
+    // bank account, bypassing refunds entirely.
+    //
+    // `balance` stays as the spendable total and is recomputed from the two
+    // buckets on every save (see the hook below), so it can never drift.
     balance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Bought with money, or granted as a bonus. Spendable, never cashable.
+    purchasedBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Earned by teaching. Spendable AND cashable.
+    earnedBalance: {
       type: Number,
       default: 0,
       min: 0,
@@ -76,6 +95,13 @@ const creditWalletSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Single source of truth for the spendable total. Every mutation goes through
+// the helpers in utils/wallet.js, which only touch the buckets.
+creditWalletSchema.pre('save', function (next) {
+  this.balance = (this.purchasedBalance || 0) + (this.earnedBalance || 0);
+  next();
+});
 
 export const CreditTransaction = mongoose.model('CreditTransaction', creditTransactionSchema);
 export const CreditWallet = mongoose.model('CreditWallet', creditWalletSchema);
