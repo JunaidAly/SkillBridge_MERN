@@ -11,6 +11,11 @@ import SessionDispute from '../models/SessionDispute.js';
 import { getSessionRoles, runMeetingCompletionSweep } from '../utils/meetingCompletion.js';
 import { getOrCreateWallet } from '../utils/wallet.js';
 import { CREDITS_PER_LEARNING_SESSION } from '../config/sessionCreditRates.js';
+import {
+  checkCanBeBooked,
+  checkCanBookPaidSession,
+  checkCanTeach,
+} from '../config/verificationPolicy.js';
 
 const router = express.Router();
 
@@ -150,22 +155,58 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'sessionType must be "teaching" or "learning"' });
     }
 
-    const other = await User.findById(otherUserId).select('_id name acceptsFreeTrialSessions');
+    // Both sides are loaded once here and reused for the rest of the handler -
+    // the gates, the free-trial check and the invite email all need them.
+    const other = await User.findById(otherUserId)
+      .select('_id name email acceptsFreeTrialSessions verificationStatus skillsTeaching');
     if (!other) return res.status(404).json({ message: 'User not found' });
+
+    const creator = await User.findById(userId)
+      .select('_id name email freeTrialSessionUsed verificationStatus skillsTeaching');
+    if (!creator) return res.status(404).json({ message: 'User not found' });
+
+    // Whoever is teaching has to have proven who they are - that is the promise
+    // the student is paying against. Which side that is depends on who booked:
+    // see getSessionRoles in meetingCompletion.js.
+    const teacherBlocked = sessionType === 'teaching'
+      ? checkCanTeach(creator)
+      : checkCanBeBooked(other);
+    if (teacherBlocked) return res.status(403).json(teacherBlocked);
 
     // Eligibility is always re-verified server-side, never trusted from the
     // client body alone - this is what lets a session skip the balance check
     // entirely, so it can't be spoofed.
     let isFreeTrialSession = false;
     if (sessionType === 'learning' && useFreeTrialSession) {
-      const student = await User.findById(userId).select('freeTrialSessionUsed');
-      if (student.freeTrialSessionUsed) {
+      if (creator.freeTrialSessionUsed) {
         return res.status(400).json({ message: "You've already used your one free trial session." });
       }
       if (!other.acceptsFreeTrialSessions) {
         return res.status(400).json({ message: `${other.name} isn't accepting free trial bookings.` });
       }
       isFreeTrialSession = true;
+    }
+
+    // The learner is asked for ID only once the free trial is behind them. That
+    // one session is what buys us the right to ask at all - demanding a CNIC
+    // from someone who has never seen a session happen just loses them.
+    //
+    // Checked on whoever is actually learning, not just on the booker: a
+    // student who couldn't book for themselves could otherwise ask the teacher
+    // to create the session and be charged for it all the same.
+    if (!isFreeTrialSession) {
+      const learner = sessionType === 'learning' ? creator : other;
+      const learnerBlocked = checkCanBookPaidSession(learner);
+      if (learnerBlocked) {
+        return res.status(403).json(
+          learner === creator
+            ? learnerBlocked
+            : {
+                code: 'LEARNER_NOT_VERIFIED',
+                message: `${other.name} hasn't completed identity verification yet, so they can't be booked into a paid session.`,
+              }
+        );
+      }
     }
 
     // The creator is always the learner when sessionType is 'learning' (see
@@ -292,10 +333,7 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // Send email notification to the other participant
-    const creator = await User.findById(userId).select('name email');
-    const otherUser = await User.findById(otherUserId).select('name email');
-
-    if (otherUser?.email && creator?.name) {
+    if (other?.email && creator?.name) {
       const meetingDetails = {
         title: title.trim(),
         startsAt: new Date(startsAt),
@@ -306,7 +344,7 @@ router.post('/', authenticateToken, async (req, res) => {
       };
 
       // Send email asynchronously (don't wait for it)
-      sendMeetingInviteEmail(otherUser.email, otherUser.name, meetingDetails)
+      sendMeetingInviteEmail(other.email, other.name, meetingDetails)
         .catch(err => console.error('Failed to send meeting email:', err));
     }
 

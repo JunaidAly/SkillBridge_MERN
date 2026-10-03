@@ -6,6 +6,7 @@ import { fetchMeetings } from "../store/meetingsSlice";
 import { fetchProfile } from "../store/profileSlice";
 import AIRecommendations from "../components/Dashboard/AIRecommendations";
 import ProfileCompletionBanner from "../components/Dashboard/ProfileCompletionBanner";
+import VerificationBanner from "../components/Dashboard/VerificationBanner";
 
 function DashboardPage() {
   const dispatch = useDispatch();
@@ -58,6 +59,9 @@ function DashboardPage() {
         </p>
       </div>
 
+      {/* Verification first - it gates real functionality, profile completion
+          is only a suggestion. */}
+      <VerificationBanner />
       <ProfileCompletionBanner />
 
       {/* Quick Stats */}

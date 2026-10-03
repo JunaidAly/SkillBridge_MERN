@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import { notifyAdmins, emitToAdmins } from '../utils/notify.js';
 import { isValidDocType, DEFAULT_VERIFICATION_DOC_TYPE } from '../config/verificationDocTypes.js';
+import { describeMissingDocs, isTeachingAccount } from '../config/verificationPolicy.js';
 
 export const submitVerification = async (req, res) => {
   try {
@@ -9,9 +10,12 @@ export const submitVerification = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (!user.skillsTeaching || user.skillsTeaching.length === 0) {
-      return res.status(403).json({
-        message: 'Add at least one skill you teach before submitting for verification.',
+    // Students verify too - they just need less. Requiring a teaching skill
+    // here used to lock them out of verification entirely, which in turn locked
+    // them out of booking past the free trial.
+    if (user.verificationStatus === 'pending') {
+      return res.status(409).json({
+        message: "Your documents are already under review. We'll email you once that's done.",
       });
     }
 
@@ -33,6 +37,13 @@ export const submitVerification = async (req, res) => {
       fileName: file.originalname || '',
     }));
 
+    // Rejected here rather than at review time: a reviewer's day shouldn't be
+    // spent telling people they forgot their ID.
+    const missing = describeMissingDocs(user, docs.map((d) => d.docType));
+    if (missing) {
+      return res.status(400).json({ message: missing });
+    }
+
     user.verificationDocs = docs;
     user.verificationStatus = 'pending';
     user.verificationSubmittedAt = new Date();
@@ -44,7 +55,7 @@ export const submitVerification = async (req, res) => {
     await notifyAdmins({
       type: 'verification_submitted',
       title: 'New verification request',
-      body: `${user.name} submitted ${docs.length} document${docs.length === 1 ? '' : 's'} for teacher verification.`,
+      body: `${user.name} submitted ${docs.length} document${docs.length === 1 ? '' : 's'} for ${isTeachingAccount(user) ? 'teacher' : 'student'} verification.`,
       link: '/admin/verifications',
     });
 

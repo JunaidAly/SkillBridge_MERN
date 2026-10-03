@@ -1,7 +1,9 @@
 import PayoutRequest from '../models/PayoutRequest.js';
+import User from '../models/User.js';
 import { CreditTransaction, CreditWallet } from '../models/Credit.js';
 import { creditsToRupees } from '../config/creditConversion.js';
 import { holdEarnedForPayout } from '../utils/wallet.js';
+import { checkCanCashOut } from '../config/verificationPolicy.js';
 
 // Below this, admin would have to manually process a payout request over a
 // negligible amount - not worth the manual bank-transfer overhead.
@@ -16,6 +18,16 @@ export const requestPayout = async (req, res) => {
   try {
     const userId = req.user.userId;
     const { creditsRequested, payoutMethod, payoutDetails } = req.body;
+
+    // Checked before anything else: money leaving the platform to a named bank
+    // account is the one place identity is non-negotiable. Answering "verify
+    // first" beats answering "minimum is 100 credits" to someone who was never
+    // going to be allowed to withdraw anyway.
+    const requester = await User.findById(userId).select('name verificationStatus skillsTeaching');
+    if (!requester) return res.status(404).json({ message: 'User not found' });
+
+    const blocked = checkCanCashOut(requester);
+    if (blocked) return res.status(403).json(blocked);
 
     const credits = Number(creditsRequested);
     if (!Number.isFinite(credits) || credits < MIN_PAYOUT_CREDITS) {

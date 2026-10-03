@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Mail, MapPin, Globe, Clock, Star, Pencil, Plus, X, Award, Loader2, FileText, ShieldCheck, Upload, Eye } from "lucide-react";
 import Button from "../ui/Button";
@@ -28,8 +29,12 @@ const MAX_VERIFICATION_FILE_BYTES = 10 * 1024 * 1024;
 
 function ProfilePage() {
   const dispatch = useDispatch();
+  const location = useLocation();
   const { success: showSuccess, error: showError } = useToast();
   const { profile, loading, error } = useSelector((state) => state.profile);
+
+  // Which navigation's #verification hash we've already scrolled for.
+  const hashHandledRef = useRef(null);
 
   const [previewCert, setPreviewCert] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -48,6 +53,24 @@ function ProfilePage() {
   useEffect(() => {
     dispatch(fetchProfile());
   }, [dispatch]);
+
+  // Arriving from the dashboard's "Verify now" link. The hash alone doesn't
+  // work: the verification card isn't rendered until fetchProfile resolves, so
+  // by the time it exists the browser has already given up looking for it and
+  // ScrollRestoration has parked us at the top. Scroll once it's really there.
+  //
+  // Keyed on location.key so it fires once per navigation - otherwise a live
+  // verificationReviewed event would yank the page back down mid-read.
+  useEffect(() => {
+    if (location.hash !== "#verification" || !profile) return;
+    if (hashHandledRef.current === location.key) return;
+
+    const el = document.getElementById("verification");
+    if (!el) return;
+
+    hashHandledRef.current = location.key;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [location.hash, location.key, profile]);
 
   // An admin's decision lands here live, so the badge and the status panel
   // update while the user is looking at them.
@@ -96,14 +119,35 @@ function ProfilePage() {
 
   const selectedVerificationCount = Object.keys(verificationFiles).length;
 
+  const teachesSkills = (profile?.skillsTeaching?.length || 0) > 0;
+
+  // A student only has to prove who they are, so only the ID slot is offered up
+  // front - asking a learner for a degree is noise. A teacher is additionally
+  // backing a claim students pay against, so the credential slot comes too.
+  // This mirrors describeMissingDocs in backend/config/verificationPolicy.js,
+  // which is what actually enforces it.
+  const docSlots = VERIFICATION_DOC_TYPES.map((t) => ({
+    ...t,
+    recommended: teachesSkills ? t.recommended : t.value === "cnic",
+  }));
+
   // Recommended slots are always offered; the rest appear once added, or if
   // they somehow already hold a file.
-  const visibleDocSlots = VERIFICATION_DOC_TYPES.filter(
+  const visibleDocSlots = docSlots.filter(
     (t) => t.recommended || extraDocSlots.includes(t.value) || verificationFiles[t.value]
   );
-  const remainingDocTypes = VERIFICATION_DOC_TYPES.filter(
+  const remainingDocTypes = docSlots.filter(
     (t) => !visibleDocSlots.some((v) => v.value === t.value)
   );
+
+  // Same rule the server applies in describeMissingDocs - checked here only so
+  // the button says what's missing instead of the submission bouncing back.
+  const CREDENTIAL_TYPES = ["degree", "transcript", "teaching_certificate", "experience_letter", "portfolio"];
+  const submissionBlocker = !verificationFiles.cnic
+    ? "Attach your CNIC to submit"
+    : teachesSkills && !CREDENTIAL_TYPES.some((t) => verificationFiles[t])
+      ? "Add one credential as well - degree, transcript, certificate, experience letter or portfolio"
+      : null;
 
   const addDocSlot = (docType) => {
     setVerificationFileError("");
@@ -128,7 +172,7 @@ function ProfilePage() {
 
   const handleSubmitVerification = async () => {
     const entries = Object.entries(verificationFiles).map(([docType, file]) => ({ file, docType }));
-    if (entries.length === 0) return;
+    if (entries.length === 0 || submissionBlocker) return;
     setSubmittingVerification(true);
     try {
       await dispatch(submitVerification(entries)).unwrap();
@@ -192,7 +236,10 @@ function ProfilePage() {
     }
   };
 
-  if (loading) {
+  // Only spin when there is genuinely nothing to show. Spinning on every
+  // refetch tore the whole page down and rebuilt it - which, besides the flash
+  // on each visit, killed any in-progress scroll to #verification.
+  if (loading && !profile) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-teal" />
@@ -200,7 +247,9 @@ function ProfilePage() {
     );
   }
 
-  if (error) {
+  // Same reasoning: a background refetch failing shouldn't replace a profile
+  // the user is already reading with an error screen.
+  if (error && !profile) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -522,14 +571,14 @@ function ProfilePage() {
         </div>
       </div>
 
-      {/* Teacher Verification Section */}
-      {profile.skillsTeaching?.length > 0 && (
-        <div className="bg-white rounded-xl p-6 shadow-sm">
+      {/* Identity Verification. Shown to everyone, not just teachers - a student
+          needs it too once their free trial session is used up. */}
+      <div id="verification" className="bg-white rounded-xl p-6 shadow-sm scroll-mt-24">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <ShieldCheck className="text-teal" size={20} />
               <h2 className="font-family-poppins text-lg font-semibold text-black">
-                Teacher Verification
+                {teachesSkills ? "Teacher Verification" : "Identity Verification"}
               </h2>
             </div>
             <Badge status={profile.verificationStatus || "unverified"} />
@@ -547,13 +596,18 @@ function ProfilePage() {
             </p>
           ) : profile.verificationStatus === "verified" ? (
             <p className="font-family-poppins text-sm text-gray">
-              You're a verified teacher. Verified profiles are shown with a badge.
+              You're verified. Your profile is shown with a badge
+              {teachesSkills ? ", and you can take sessions and cash out your earnings." : "."}
             </p>
           ) : (
             <div>
+              {/* States the requirement outright. The backend rejects a
+                  submission that misses it, so saying it here avoids a
+                  round-trip spent being told what was obvious. */}
               <p className="font-family-poppins text-sm text-gray mb-4">
-                Upload whichever of these you have. Each one goes to the reviewer
-                labelled, so they know what they're looking at.
+                {teachesSkills
+                  ? "Your CNIC is required, plus at least one credential - a degree, transcript, teaching certificate, experience letter or portfolio. Until this is approved you can't take teaching sessions or cash out."
+                  : "Your CNIC is required. You can browse, chat and use your free trial session without it, but booking sessions after that needs a verified identity."}
               </p>
 
               <div className="space-y-2 mb-3">
@@ -632,21 +686,19 @@ function ProfilePage() {
                 <Button
                   variant="primary"
                   onClick={handleSubmitVerification}
-                  disabled={selectedVerificationCount === 0 || submittingVerification}
+                  disabled={Boolean(submissionBlocker) || submittingVerification}
                   className="disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submittingVerification ? "Submitting..." : "Submit for Verification"}
                 </Button>
                 <span className="font-family-poppins text-xs text-gray">
-                  {selectedVerificationCount === 0
-                    ? "Attach at least one document"
-                    : `${selectedVerificationCount} document${selectedVerificationCount === 1 ? "" : "s"} ready`}
+                  {submissionBlocker ||
+                    `${selectedVerificationCount} document${selectedVerificationCount === 1 ? "" : "s"} ready`}
                 </span>
               </div>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Modals */}
       <EditProfileModal
