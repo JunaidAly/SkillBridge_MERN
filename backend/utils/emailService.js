@@ -90,13 +90,13 @@ export async function sendFormEmail({ to, from = 'support', subject, html, text,
   }
 
   try {
-    const info = await transporter.sendMail({
+    const info = await dispatch({
       from: `"SkillBridge" <${fromAddress}>`,
       to,
       subject,
       html,
       text,
-      ...(replyTo ? { replyTo } : {}),
+      replyTo,
     });
     console.log('✅ Form email sent:', info.messageId);
     return true;
