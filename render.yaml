@@ -57,6 +57,10 @@ services:
       # over HTTPS. With this set the app sends through Resend instead.
       - key: RESEND_API_KEY
         sync: false
+      # Sending identity for the contact/support forms, e.g. noreply@domain.
+      # Keeps form mail from arriving From the mailbox it is delivered To.
+      - key: MAIL_FROM
+        sync: false
       # OAuth. The backend verifies Google/Facebook tokens against these and
       # REFUSES the login (503) when they are missing - it will not fall back to
       # trusting the email/name in the request body. Without GOOGLE_CLIENT_ID

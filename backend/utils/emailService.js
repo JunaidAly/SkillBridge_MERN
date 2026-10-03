@@ -12,6 +12,15 @@ export const SUPPORT_FROM = () =>
 export const INFO_FROM = () =>
   process.env.INFO_EMAIL || process.env.SUPPORT_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER;
 
+// A dedicated sending identity for the contact and support forms. Without it
+// those messages go out From the same mailbox they are delivered To, which
+// makes the mail client file them as sent-by-you ("Me" in the sender column)
+// and is the kind of self-addressed mail spam filters look at twice. Replies
+// are unaffected either way - Reply-To already points at the person who wrote
+// in. Needs no mailbox of its own, only an address on a verified domain.
+export const FORM_FROM = (identity) =>
+  process.env.MAIL_FROM || (identity === 'info' ? INFO_FROM() : SUPPORT_FROM());
+
 function smtpTransport() {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
@@ -78,7 +87,7 @@ async function dispatch({ from, to, subject, html, text, replyTo }) {
  * to email directly instead of claiming success.
  */
 export async function sendFormEmail({ to, from = 'support', subject, html, text, replyTo }) {
-  const fromAddress = from === 'info' ? INFO_FROM() : SUPPORT_FROM();
+  const fromAddress = FORM_FROM(from);
   const hasTransport = Boolean(process.env.RESEND_API_KEY) || Boolean(smtpTransport());
 
   if (!hasTransport) {
