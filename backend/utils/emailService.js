@@ -29,6 +29,46 @@ function smtpTransport() {
   });
 }
 
+
+// Render's free plan blocks outbound SMTP, so a host that works locally just
+// times out there. Resend goes over HTTPS on 443, which isn't blocked, so it
+// is preferred whenever an API key is present and SMTP remains the fallback -
+// that keeps local development working unchanged with no key set.
+let resendClient = null;
+async function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!resendClient) {
+    const { Resend } = await import('resend');
+    resendClient = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resendClient;
+}
+
+/**
+ * The one place a message actually leaves from. Returns a { messageId }-ish
+ * object so existing callers can keep logging it.
+ */
+async function dispatch({ from, to, subject, html, text, replyTo }) {
+  const resend = await getResend();
+
+  if (resend) {
+    const { data, error } = await resend.emails.send({
+      from,
+      to,
+      subject,
+      html,
+      text,
+      ...(replyTo ? { replyTo } : {}),
+    });
+    if (error) throw new Error(error.message || 'Resend rejected the message');
+    return { messageId: data?.id };
+  }
+
+  const transporter = smtpTransport();
+  if (!transporter) throw new Error('No email transport configured');
+  return transporter.sendMail({ from, to, subject, html, text, ...(replyTo ? { replyTo } : {}) });
+}
+
 /**
  * Used by the contact and support forms. `replyTo` carries the sender's own
  * address so staff can just hit reply, while the From stays a mailbox the
@@ -38,12 +78,12 @@ function smtpTransport() {
  * to email directly instead of claiming success.
  */
 export async function sendFormEmail({ to, from = 'support', subject, html, text, replyTo }) {
-  const transporter = smtpTransport();
   const fromAddress = from === 'info' ? INFO_FROM() : SUPPORT_FROM();
+  const hasTransport = Boolean(process.env.RESEND_API_KEY) || Boolean(smtpTransport());
 
-  if (!transporter) {
+  if (!hasTransport) {
     console.log('='.repeat(50));
-    console.log(`📧 [not sent - SMTP unconfigured] ${subject} -> ${to}`);
+    console.log(`📧 [not sent - no email transport configured] ${subject} -> ${to}`);
     console.log(text);
     console.log('='.repeat(50));
     return false;
@@ -86,25 +126,7 @@ export async function sendVerificationCode(email, code) {
   }
 
   try {
-    // Create transporter with timeout settings
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465', // true for 465, false for other ports
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      // Add timeout settings
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-      // For Gmail, you might need to use OAuth2 or App Password
-      // For other providers, adjust settings accordingly
-    });
-
-    // Send email
-    const info = await transporter.sendMail({
+    const info = await dispatch({
       from: `"SkillBridge" <${smtpFrom}>`,
       to: email,
       subject: 'SkillBridge Verification Code',
@@ -155,17 +177,7 @@ export async function sendPasswordResetCode(email, code) {
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-      auth: { user: smtpUser, pass: smtpPass },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
-
-    const info = await transporter.sendMail({
+    const info = await dispatch({
       from: `"SkillBridge" <${smtpFrom}>`,
       to: email,
       subject: 'Reset your SkillBridge password',
@@ -231,19 +243,7 @@ export async function sendMeetingInviteEmail(email, recipientName, meetingDetail
   }
 
   try {
-    // Create transporter
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-    });
-
-    // Send email
-    const info = await transporter.sendMail({
+    const info = await dispatch({
       from: `"SkillBridge" <${smtpFrom}>`,
       to: email,
       subject: `Meeting Invitation: ${title}`,
@@ -314,20 +314,7 @@ export async function sendNotificationEmail(email, subject, html, text) {
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
-
-    const info = await transporter.sendMail({
+    const info = await dispatch({
       from: `"SkillBridge" <${smtpFrom}>`,
       to: email,
       subject,

@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import nodemailer from 'nodemailer';
-import { SUPPORT_FROM, INFO_FROM } from '../utils/emailService.js';
+import { SUPPORT_FROM, INFO_FROM, sendFormEmail } from '../utils/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,14 +25,43 @@ function describeConfig() {
     ['SMTP_PASS', process.env.SMTP_PASS ? `set (${process.env.SMTP_PASS.length} chars)` : 'MISSING'],
     ['SUPPORT_EMAIL', SUPPORT_FROM()],
     ['INFO_EMAIL', INFO_FROM()],
+    ['RESEND_API_KEY', process.env.RESEND_API_KEY ? 'set' : 'not set'],
   ];
   console.log('Mail configuration:');
   rows.forEach(([k, v]) => console.log(`  ${k.padEnd(14)} ${v || 'MISSING'}`));
-  console.log('');
+  console.log(
+    `
+Transport in use: ${
+      process.env.RESEND_API_KEY ? 'Resend (HTTPS) - SMTP settings are ignored' : 'SMTP'
+    }
+`
+  );
 }
 
 async function main() {
   describeConfig();
+
+  // Resend needs no connection check - it is a plain HTTPS call, which is the
+  // whole reason it works where SMTP is blocked. Send a real message instead.
+  if (process.env.RESEND_API_KEY) {
+    if (!recipient) {
+      console.log('Pass an email address to send a test message:');
+      console.log('  node scripts/testEmail.js you@example.com');
+      return;
+    }
+    for (const [label, from] of [['support', SUPPORT_FROM()], ['info', INFO_FROM()]]) {
+      const ok = await sendFormEmail({
+        to: recipient,
+        from: label,
+        subject: `SkillBridge test (${label})`,
+        html: `<p>This confirms mail can be sent as ${from}.</p>`,
+        text: `This confirms mail can be sent as ${from}.`,
+      });
+      console.log(`${ok ? '✅ Sent' : '❌ Failed'} as ${from}`);
+      if (!ok) console.log('   Check the domain is verified in Resend and the From matches it.');
+    }
+    return;
+  }
 
   const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
