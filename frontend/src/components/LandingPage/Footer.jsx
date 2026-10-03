@@ -1,11 +1,18 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 function Footer() {
-    const scrollToSection = (sectionId) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // These point at sections of the landing page. From anywhere else the
+  // element simply isn't in the document, so the old version silently did
+  // nothing - navigate home first, then scroll once it has rendered.
+  const scrollToSection = (sectionId) => {
+    if (location.pathname !== "/") {
+      navigate("/", { state: { scrollTo: sectionId } });
+      return;
     }
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
     <footer className="text-black font-family-poppins">
@@ -58,6 +65,14 @@ function Footer() {
           <div>
             <h3 className="font-josefin font-semibold text-lg mb-4">Legal</h3>
             <ul className="space-y-2 font-poppins text-sm">
+              <li>
+                <Link
+                  to="/contact"
+                  className="text-black cursor-pointer hover:text-teal transition-colors"
+                >
+                  Contact Us
+                </Link>
+              </li>
               <li>
                 <Link
                   to="/terms"

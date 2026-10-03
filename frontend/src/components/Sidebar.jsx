@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X, PanelLeftClose, Receipt, ShieldCheck, Users, ScrollText, BadgeCheck, RotateCcw, Banknote, Flag, History, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, CircleUserRound, CreditCard, MessageSquare, MessageCircle, LogOut, Menu, X, PanelLeftClose, LifeBuoy, Receipt, ShieldCheck, Users, ScrollText, BadgeCheck, RotateCcw, Banknote, Flag, History, AlertTriangle } from "lucide-react";
 import { logout } from "../store/authSlice";
 import TopbarActions from "./TopbarActions";
 
@@ -13,6 +13,7 @@ const navItems = [
   { name: "Chat & Schedule", path: "/chat", icon: MessageSquare },
   { name: "Session History", path: "/meetings/history", icon: History },
   { name: "Feedback", path: "/feedback", icon: MessageCircle },
+  { name: "Support", path: "/support", icon: LifeBuoy },
 ];
 
 // Admin accounts only manage the platform - they don't teach/learn/chat, so

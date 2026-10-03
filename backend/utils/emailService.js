@@ -1,5 +1,71 @@
 import nodemailer from 'nodemailer';
 
+// Which address mail appears to come from. Account and transactional mail goes
+// out as support@ so replies land where someone handles them; general
+// enquiries (the public contact form) use info@.
+//
+// These must be addresses the SMTP account is allowed to send as - a provider
+// will reject or silently rewrite a From it doesn't own, which is why the
+// Gmail sender had to move to the domain's own mailbox.
+export const SUPPORT_FROM = () =>
+  process.env.SUPPORT_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER;
+export const INFO_FROM = () =>
+  process.env.INFO_EMAIL || process.env.SUPPORT_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER;
+
+function smtpTransport() {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) return null;
+
+  return nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+    auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+  });
+}
+
+/**
+ * Used by the contact and support forms. `replyTo` carries the sender's own
+ * address so staff can just hit reply, while the From stays a mailbox the
+ * SMTP account actually owns.
+ *
+ * Returns false when it genuinely couldn't send, so a form can tell the user
+ * to email directly instead of claiming success.
+ */
+export async function sendFormEmail({ to, from = 'support', subject, html, text, replyTo }) {
+  const transporter = smtpTransport();
+  const fromAddress = from === 'info' ? INFO_FROM() : SUPPORT_FROM();
+
+  if (!transporter) {
+    console.log('='.repeat(50));
+    console.log(`📧 [not sent - SMTP unconfigured] ${subject} -> ${to}`);
+    console.log(text);
+    console.log('='.repeat(50));
+    return false;
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"SkillBridge" <${fromAddress}>`,
+      to,
+      subject,
+      html,
+      text,
+      ...(replyTo ? { replyTo } : {}),
+    });
+    console.log('✅ Form email sent:', info.messageId);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending form email:', error.message);
+    return false;
+  }
+}
+
 export async function sendVerificationCode(email, code) {
   // Always print the code to the terminal for local testing, regardless of
   // whether SMTP is configured or the email actually sends successfully.
@@ -11,7 +77,7 @@ export async function sendVerificationCode(email, code) {
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
-  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+  const smtpFrom = SUPPORT_FROM();
 
   // If SMTP is not configured, we've already logged the code above - nothing more to do.
   if (!smtpHost || !smtpUser || !smtpPass) {
@@ -81,7 +147,7 @@ export async function sendPasswordResetCode(email, code) {
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
-  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+  const smtpFrom = SUPPORT_FROM();
 
   if (!smtpHost || !smtpUser || !smtpPass) {
     console.log('⚠️  SMTP not configured. Add SMTP_HOST, SMTP_USER, and SMTP_PASS to .env to send emails.');
@@ -137,7 +203,7 @@ export async function sendMeetingInviteEmail(email, recipientName, meetingDetail
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
-  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+  const smtpFrom = SUPPORT_FROM();
 
   const meetingDate = new Date(startsAt).toLocaleString('en-US', {
     weekday: 'long',
@@ -235,7 +301,7 @@ export async function sendNotificationEmail(email, subject, html, text) {
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
-  const smtpFrom = process.env.SMTP_FROM || smtpUser;
+  const smtpFrom = SUPPORT_FROM();
 
   if (!smtpHost || !smtpUser || !smtpPass) {
     console.log('='.repeat(50));
