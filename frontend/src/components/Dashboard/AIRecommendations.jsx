@@ -312,18 +312,28 @@ function AIRecommendations() {
         </div>
       )}
 
+      {/* Laid out like the other empty states in this card rather than as a
+          tinted alert box - the service being down is a dead end to route the
+          user out of, not something they did wrong. The button does the routing
+          instead of telling them to go and find it. */}
       {!showNoSkillsState && activeError && !loading && (
-        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-          <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
-          <div className="flex-1">
-            <p className="font-family-poppins text-sm font-medium text-amber-900">
-              AI Recommendations Temporarily Unavailable
-            </p>
-            <p className="font-family-poppins text-sm text-amber-700 mt-1">{activeError}</p>
-            <p className="font-family-poppins text-sm text-amber-600 mt-2">
-              💡 In the meantime, you can browse users manually or contact support.
-            </p>
+        <div className="text-center py-12">
+          <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <AlertCircle className="text-orange-500" size={22} />
           </div>
+          <p className="font-family-poppins text-base font-semibold text-black mb-1">
+            Recommendations are unavailable right now
+          </p>
+          <p className="font-family-poppins text-sm text-gray max-w-sm mx-auto mb-5">
+            {activeError}
+          </p>
+          <button
+            type="button"
+            onClick={() => setCtrl({ viewMode: "all", page: 1 })}
+            className="inline-block font-family-poppins text-sm font-semibold text-white bg-teal px-6 py-2.5 rounded-lg hover:opacity-90 transition-all"
+          >
+            Browse all users
+          </button>
         </div>
       )}
 

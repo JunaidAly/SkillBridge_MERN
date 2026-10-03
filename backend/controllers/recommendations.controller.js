@@ -103,7 +103,10 @@ export const getMyRecommendations = async (req, res) => {
     if (error.code === 'ECONNREFUSED') {
       return res.status(503).json({
         success: false,
-        message: 'AI recommendation system is currently offline. Our team is working on it. Please check back later.'
+        // Just the cause. The dashboard supplies its own heading and a button
+        // through to "All Users", so repeating "check back later" here only
+        // made the panel say the same thing three times over.
+        message: 'The recommendation service is offline at the moment.'
       });
     }
 
